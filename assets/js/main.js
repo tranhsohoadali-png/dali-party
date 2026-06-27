@@ -298,7 +298,7 @@
     /* search (demo) */
     $$("[data-search]").forEach((box) => {
       const input = box.querySelector("input");
-      box.addEventListener("submit", (e) => { e.preventDefault(); if (input.value.trim()) location.href = "cua-hang.html"; });
+      box.addEventListener("submit", (e) => { e.preventDefault(); if (input.value.trim()) location.href = "cua-hang"; });
     });
   });
 })();
