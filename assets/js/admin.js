@@ -12,9 +12,19 @@
   var DS = window.DaliStores;   // stores
   var SHOP = window.DaliShop;   // products / orders / bookings / messages / settings
   var revRange = 7;             // overview revenue chart window (days)
+  var currentView = "overview"; // active view name (set by showView; used by global quick-search)
+  var lastFocus = null;         // element focused before a modal opened (restored on close — a11y)
 
   /* ---------- helpers ---------- */
   function $(id) { return document.getElementById(id); }
+  function debounce(fn, wait) {
+    var timer = null;
+    return function () {
+      var ctx = this, args = arguments;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () { timer = null; fn.apply(ctx, args); }, wait || 180);
+    };
+  }
   function esc(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -59,6 +69,12 @@
     requestAnimationFrame(function () { el.classList.add("show"); });
     setTimeout(function () { el.classList.remove("show"); setTimeout(function () { el.remove(); }, 350); }, 2600);
   }
+  /* a11y: remember what was focused before a modal opened, and return focus on close */
+  function rememberFocus() { lastFocus = document.activeElement; }
+  function restoreFocus() {
+    var el = lastFocus; lastFocus = null;
+    if (el && typeof el.focus === "function") { try { el.focus(); } catch (e) {} }
+  }
 
   /* ============================================================
      AUTH GATE (client-side demo only)
@@ -90,6 +106,7 @@
      TABS / VIEW ROUTER
      ============================================================ */
   function showView(name) {
+    currentView = name;
     document.querySelectorAll(".view").forEach(function (v) { v.hidden = v.getAttribute("data-view") !== name; });
     document.querySelectorAll(".tab").forEach(function (t) { t.classList.toggle("active", t.getAttribute("data-view") === name); });
     var TITLES = { overview: "Tổng quan", products: "Sản phẩm", orders: "Đơn hàng", customers: "Khách hàng", bookings: "Đặt dịch vụ", messages: "Tin nhắn", stores: "Điểm bán", settings: "Cài đặt" };
@@ -107,6 +124,31 @@
   document.querySelectorAll(".tab").forEach(function (t) {
     t.addEventListener("click", function () { showView(t.getAttribute("data-view")); });
   });
+
+  /* ---- Topbar global quick-search: route query into the current view's filter ---- */
+  var gs = $("globalSearch");
+  if (gs) {
+    gs.addEventListener("input", debounce(function () {
+      var q = this.value.trim().toLowerCase();
+      if (currentView === "products") { prodFilter = q; if ($("prodSearch")) $("prodSearch").value = this.value; renderProducts(); }
+      else if (currentView === "orders") { orderFilter = q; if ($("orderSearch")) $("orderSearch").value = this.value; renderOrders(); }
+      else if (currentView === "stores") { storeFilter = q; if ($("searchInput")) $("searchInput").value = this.value; renderStores(); }
+      /* customers/messages/bookings have no text filter — no-op gracefully */
+    }, 180));
+  }
+
+  /* ---- Topbar notification bell: summarize + jump to the more urgent view ---- */
+  var bell = $("bellBtn");
+  if (bell) {
+    bell.addEventListener("click", function () {
+      var orders = SHOP ? SHOP.getOrders() : [];
+      var messages = SHOP ? SHOP.getMessages() : [];
+      var newOrders = orders.filter(function (o) { return o.status === "Mới"; }).length;
+      var unread = messages.filter(function (m) { return !m.read; }).length;
+      toast(newOrders + " đơn mới · " + unread + " tin chưa đọc");
+      showView(unread >= newOrders ? "messages" : "orders");
+    });
+  }
 
   function refreshCounts() {
     var products = SHOP ? SHOP.getProducts() : [];
@@ -147,8 +189,8 @@
       { ic: "📍", num: stores.length, lbl: "Điểm bán", view: "stores" }
     ];
     $("statGrid").innerHTML = cards.map(function (c) {
-      return '<div class="stat-card" tabindex="0" role="button" data-go="' + c.view + '">' +
-        '<span class="ic">' + c.ic + '</span><span class="num">' + esc(c.num) + '</span><span class="lbl">' + esc(c.lbl) + "</span></div>";
+      return '<button class="stat-card" type="button" data-go="' + c.view + '">' +
+        '<span class="ic">' + c.ic + '</span><span class="num">' + esc(c.num) + '</span><span class="lbl">' + esc(c.lbl) + "</span></button>";
     }).join("");
     var ov = $("ovDate");
     try { ov.textContent = new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" }); } catch (e) {}
@@ -157,16 +199,228 @@
     if (!recent.length) {
       $("recentOrders").innerHTML = '<p style="color:var(--muted)">Chưa có đơn hàng nào. Khi khách bấm “Thanh toán” trên website, đơn sẽ xuất hiện ở đây.</p>';
     } else {
-      $("recentOrders").innerHTML =
-        '<div style="overflow-x:auto;border:1px solid var(--line);border-radius:14px"><table class="dtable"><thead><tr><th>Mã đơn</th><th>Khách</th><th>Tổng</th><th>Trạng thái</th><th>Thời gian</th></tr></thead><tbody>' +
+      var recTable =
+        '<div class="table-wrap"><table class="dtable"><thead><tr><th>Mã đơn</th><th>Khách</th><th>Tổng</th><th>Trạng thái</th><th>Thời gian</th></tr></thead><tbody>' +
         recent.map(function (o) {
           return "<tr><td><b>" + esc(o.code) + "</b></td><td>" + esc((o.customer && o.customer.name) || "—") +
             "</td><td>" + money(o.total) + "</td><td>" + statusBadge(o.status) + '</td><td class="cell-mono">' + esc(fmtDate(o.at)) + "</td></tr>";
         }).join("") + "</tbody></table></div>";
+      /* mobile twin: same .cards/.d-card pattern as every other view (display toggled by CSS @760px) */
+      var recCards = '<div class="cards">' + recent.map(function (o) {
+        return '<div class="d-card"><h4>' + esc(o.code) + " · " + money(o.total) + "</h4><p>👤 " + esc((o.customer && o.customer.name) || "—") +
+          "</p><p>" + statusBadge(o.status) + " · 🕐 " + esc(fmtDate(o.at)) + "</p></div>";
+      }).join("") + "</div>";
+      $("recentOrders").innerHTML = recTable + recCards;
     }
 
+    fillKpiGrid(orders, bookings, messages, products);
+    renderCatRevChart(orders);
+    renderTopProducts(orders);
     renderRevChart(orders);
     renderStatusDonut(orders);
+  }
+
+  /* ---- Overview: detailed KPI cards (period revenue, time buckets, AOV,
+         action worklist, best-day / VIP / rates, catalog health).
+         Everything is computed from DaliShop data and degrades cleanly to
+         "0₫" / "—" on empty data. ---- */
+  function fillKpiGrid(orders, bookings, messages, products) {
+    var host = $("kpiGrid"); if (!host) return;
+    var valid = orders.filter(function (o) { return o.status !== "Đã huỷ"; });
+
+    /* date keys built exactly like renderRevChart (today-based, pad2) */
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    function keyOf(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+    var todayKey = keyOf(today);
+
+    /* Monday 00:00 of current week */
+    var weekStart = new Date(today.getTime());
+    var dow = (weekStart.getDay() + 6) % 7;            // 0 = Monday
+    weekStart = new Date(weekStart.getTime() - dow * 86400000);
+    var nowY = today.getFullYear(), nowM = today.getMonth();
+
+    /* ---- Period revenue + %-change vs previous window (tied to 7/30 toggle) ---- */
+    var curKeys = {}, prevKeys = {};
+    for (var i = revRange - 1; i >= 0; i--) curKeys[keyOf(new Date(today.getTime() - i * 86400000))] = 1;
+    for (var j = revRange; j < revRange * 2; j++) prevKeys[keyOf(new Date(today.getTime() - j * 86400000))] = 1;
+    var cur = 0, prev = 0;
+    valid.forEach(function (o) {
+      var k = (o.at || "").slice(0, 10);
+      if (curKeys[k]) cur += (o.total || 0);
+      else if (prevKeys[k]) prev += (o.total || 0);
+    });
+    var pct = prev > 0 ? Math.round((cur - prev) / prev * 100) : (cur > 0 ? 100 : 0);
+    var deltaHtml;
+    if (cur === 0 && prev === 0) deltaHtml = '<span class="delta flat">—</span>';
+    else if (cur >= prev) deltaHtml = '<span class="delta up">▲ ' + pct + '%</span>';
+    else deltaHtml = '<span class="delta down">▼ ' + Math.abs(pct) + '%</span>';
+
+    /* ---- Today / week / month revenue + order count ---- */
+    var tRev = 0, tN = 0, wRev = 0, wN = 0, mRev = 0, mN = 0;
+    valid.forEach(function (o) {
+      var d = new Date(o.at);
+      if ((o.at || "").slice(0, 10) === todayKey) { tRev += (o.total || 0); tN++; }
+      if (!isNaN(d.getTime()) && d >= weekStart) { wRev += (o.total || 0); wN++; }
+      if (!isNaN(d.getTime()) && d.getFullYear() === nowY && d.getMonth() === nowM) { mRev += (o.total || 0); mN++; }
+    });
+
+    /* ---- AOV + items per order ---- */
+    var aov = valid.length ? Math.round(valid.reduce(function (s, o) { return s + (o.total || 0); }, 0) / valid.length) : 0;
+    var totQty = valid.reduce(function (s, o) {
+      return s + (o.items || []).reduce(function (q, it) { return q + (it.qty || 0); }, 0);
+    }, 0);
+    var spo = valid.length ? (totQty / valid.length).toFixed(1) : "0";
+
+    /* ---- Best sales day across the current revRange window ---- */
+    var dayBuckets = {}, dayOrder = [];
+    for (var d2 = revRange - 1; d2 >= 0; d2--) {
+      var dd = new Date(today.getTime() - d2 * 86400000);
+      var dk = keyOf(dd);
+      dayBuckets[dk] = { label: pad2(dd.getDate()) + "/" + pad2(dd.getMonth() + 1), val: 0 };
+      dayOrder.push(dk);
+    }
+    valid.forEach(function (o) { var k = (o.at || "").slice(0, 10); if (dayBuckets[k]) dayBuckets[k].val += (o.total || 0); });
+    var best = null;
+    dayOrder.forEach(function (k) { var b = dayBuckets[k]; if (!best || b.val > best.val) best = b; });
+
+    /* ---- VIP customer (by phone, highest spend) ---- */
+    var byPhone = {};
+    orders.forEach(function (o) {
+      var ph = (o.customer && o.customer.phone) || "—";
+      var rec = byPhone[ph];
+      if (!rec) rec = byPhone[ph] = { name: (o.customer && o.customer.name) || "—", count: 0, spent: 0 };
+      rec.count++;
+      if (o.status !== "Đã huỷ") rec.spent += (o.total || 0);
+      rec.name = (o.customer && o.customer.name) || rec.name;
+    });
+    var custKeys = Object.keys(byPhone);
+    var custCount = custKeys.length;
+    var returning = 0, vip = null;
+    custKeys.forEach(function (k) {
+      var c = byPhone[k];
+      if (c.count > 1) returning++;
+      if (!vip || c.spent > vip.spent) vip = c;
+    });
+
+    /* ---- Completion / cancel rates (from raw status counts) ---- */
+    var total = orders.length;
+    var done = orders.filter(function (o) { return o.status === "Hoàn tất"; }).length;
+    var cancelled = orders.filter(function (o) { return o.status === "Đã huỷ"; }).length;
+    var completionRate = total ? Math.round(done / total * 100) : 0;
+    var cancelRate = total ? Math.round(cancelled / total * 100) : 0;
+
+    /* ---- Action worklist counts ---- */
+    var newOrders = orders.filter(function (o) { return o.status === "Mới"; }).length;
+    var newBookings = bookings.filter(function (b) { return b.status === "Mới"; }).length;
+    var unread = messages.filter(function (m) { return !m.read; }).length;
+
+    /* ---- Catalog health ---- */
+    var hidden = products.filter(function (p) { return p.active === false; }).length;
+    var onSale = products.filter(function (p) { return p.old && p.old > p.price; }).length;
+
+    var cards = [];
+    function card(opts) {
+      var attn = opts.attn ? " is-attn" : "";
+      var nameCls = opts.isName ? " is-name" : "";
+      var tag = opts.go ? "button" : "div";
+      var open = opts.go ? '<button class="stat-card" type="button" data-go="' + opts.go + '">' : '<div class="stat-card">';
+      var h = open;
+      if (opts.ic) h += '<span class="ic">' + opts.ic + '</span>';
+      h += '<span class="num' + attn + nameCls + '">' + esc(opts.num) + '</span>';
+      h += '<span class="lbl">' + esc(opts.lbl) + '</span>';
+      if (opts.delta) h += opts.delta;
+      if (opts.sub != null) h += '<span class="sub">' + esc(opts.sub) + '</span>';
+      return h + '</' + tag + '>';
+    }
+
+    cards.push(card({ ic: "💸", num: money(cur), lbl: "Doanh thu " + revRange + " ngày", delta: deltaHtml }));
+    cards.push(card({ ic: "📈", num: money(aov), lbl: "Giá trị TB / đơn", sub: spo + " SP / đơn" }));
+    cards.push(card({ ic: "🌅", num: money(tRev), lbl: "Hôm nay", sub: tN + " đơn" }));
+    cards.push(card({ ic: "🗓️", num: money(wRev), lbl: "Tuần này", sub: wN + " đơn" }));
+    cards.push(card({ ic: "📆", num: money(mRev), lbl: "Tháng này", sub: mN + " đơn" }));
+    cards.push(card({ ic: "🏆", num: (best && best.val > 0) ? money(best.val) : "—", lbl: "Ngày bán tốt nhất", sub: (best && best.val > 0) ? best.label : "" }));
+    cards.push(card({ ic: "👑", num: (vip && vip.spent > 0) ? vip.name : "—", lbl: "Khách VIP", isName: !!(vip && vip.spent > 0), sub: (vip && vip.spent > 0) ? money(vip.spent) : "" }));
+    cards.push(card({ ic: "✅", num: total ? completionRate + "%" : "—", lbl: "Tỉ lệ hoàn tất" }));
+    cards.push(card({ ic: "🚫", num: total ? cancelRate + "%" : "—", lbl: "Tỉ lệ huỷ", attn: cancelRate > 0 }));
+    cards.push(card({ ic: "🧾", num: newOrders, lbl: "Đơn cần xử lý", go: "orders", attn: newOrders > 0 }));
+    cards.push(card({ ic: "📅", num: newBookings, lbl: "Đặt dịch vụ mới", go: "bookings", attn: newBookings > 0 }));
+    cards.push(card({ ic: "✉️", num: unread, lbl: "Tin chưa đọc", go: "messages", attn: unread > 0 }));
+    cards.push(card({ ic: "👥", num: custCount, lbl: "Khách hàng", go: "customers", sub: returning + " khách quay lại" }));
+    cards.push(card({ ic: "🙈", num: hidden, lbl: "Sản phẩm đang ẩn", go: "products", attn: hidden > 0 }));
+    cards.push(card({ ic: "🏷️", num: onSale, lbl: "Đang giảm giá", go: "products" }));
+
+    host.innerHTML = cards.join("");
+  }
+
+  /* ---- Overview: top-selling & top-revenue products (by order line name) ---- */
+  function renderTopProducts(orders) {
+    var host = $("topProducts"); if (!host) return;
+    var acc = {};
+    orders.forEach(function (o) {
+      if (o.status === "Đã huỷ") return;
+      (o.items || []).forEach(function (it) {
+        var name = (it && it.name) || "—";
+        var rec = acc[name] || (acc[name] = { qty: 0, rev: 0 });
+        rec.qty += (it.qty || 0);
+        rec.rev += (it.price || 0) * (it.qty || 0);
+      });
+    });
+    var names = Object.keys(acc);
+    if (!names.length) { host.innerHTML = '<p style="color:var(--muted)">Chưa có dữ liệu bán hàng.</p>'; return; }
+    var byQty = names.slice().sort(function (a, b) { return acc[b].qty - acc[a].qty; }).slice(0, 5);
+    var byRev = names.slice().sort(function (a, b) { return acc[b].rev - acc[a].rev; }).slice(0, 5);
+    function tbl(title, keys, qtyFirst) {
+      var head = qtyFirst
+        ? '<thead><tr><th>Sản phẩm</th><th>SL bán</th><th>Doanh thu</th></tr></thead>'
+        : '<thead><tr><th>Sản phẩm</th><th>Doanh thu</th><th>SL bán</th></tr></thead>';
+      var body = keys.map(function (name) {
+        var r = acc[name];
+        return qtyFirst
+          ? '<tr><td><b>' + esc(name) + '</b></td><td>' + r.qty + '</td><td class="cell-mono">' + money(r.rev) + '</td></tr>'
+          : '<tr><td><b>' + esc(name) + '</b></td><td class="cell-mono">' + money(r.rev) + '</td><td>' + r.qty + '</td></tr>';
+      }).join("");
+      return '<h3 style="font-size:.92rem;font-weight:700;color:var(--ink-2);margin:0 0 8px">' + esc(title) +
+        '</h3><div class="table-wrap"><table class="dtable">' + head + '<tbody>' + body + '</tbody></table></div>';
+    }
+    host.innerHTML = '<div style="display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">' +
+      tbl("Bán chạy nhất (số lượng)", byQty, true) +
+      tbl("Doanh thu cao nhất", byRev, false) + '</div>';
+  }
+
+  /* ---- Overview: revenue-by-category mini horizontal-bar chart ----
+         Reuses the hand-rolled SVG approach of renderRevChart. ---- */
+  function renderCatRevChart(orders) {
+    var host = $("catRevChart"); if (!host) return;
+    var nameCat = {};
+    SHOP.getProducts().forEach(function (p) { nameCat[p.name] = p.cat; });
+    var totals = {};
+    orders.forEach(function (o) {
+      if (o.status === "Đã huỷ") return;
+      (o.items || []).forEach(function (it) {
+        var cat = nameCat[(it && it.name)] || "Khác";
+        totals[cat] = (totals[cat] || 0) + (it.price || 0) * (it.qty || 0);
+      });
+    });
+    var cats = Object.keys(totals);
+    var max = 0; cats.forEach(function (c) { if (totals[c] > max) max = totals[c]; });
+    if (max <= 0) { host.innerHTML = '<p style="color:var(--muted)">Chưa có dữ liệu doanh thu.</p>'; return; }
+    cats.sort(function (a, b) { return totals[b] - totals[a]; });
+
+    var W = 700, labelW = 110, barMaxW = W - labelW - 110, rowH = 34, pad = 6;
+    var H = cats.length * rowH + pad * 2;
+    var rows = "";
+    cats.forEach(function (c, i) {
+      var val = totals[c];
+      var y = pad + i * rowH;
+      var bw = Math.max(2, (val / max) * barMaxW);
+      rows += '<text x="0" y="' + (y + rowH / 2 + 4) + '" font-size="12" fill="var(--ink-2)">' + esc(c) + '</text>';
+      rows += '<rect x="' + labelW + '" y="' + (y + 6) + '" width="' + bw.toFixed(1) + '" height="' + (rowH - 14) +
+        '" rx="4" fill="var(--green-500)"><title>' + esc(c + ": " + money(val)) + '</title></rect>';
+      rows += '<text x="' + (labelW + bw + 8) + '" y="' + (y + rowH / 2 + 4) +
+        '" font-size="11" fill="var(--muted)">' + esc(money(val)) + '</text>';
+    });
+    host.innerHTML = '<svg viewBox="0 0 ' + W + " " + H + '" width="100%" role="img" ' +
+      'aria-label="Doanh thu theo danh mục" style="display:block;max-width:100%">' + rows + "</svg>";
   }
 
   /* ---- Overview: revenue bar chart (hand-rolled SVG) ---- */
@@ -249,8 +503,9 @@
       '<text x="90" y="86" text-anchor="middle" font-size="26" font-weight="700" fill="var(--ink)">' + total + "</text>" +
       '<text x="90" y="106" text-anchor="middle" font-size="12" fill="var(--muted)">đơn</text></svg>';
     var legend = '<div style="display:flex;flex-direction:column;gap:8px">' + defs.map(function (d, i) {
-      return '<div style="display:flex;align-items:center;gap:8px"><span class="st ' + d.cls + '">' +
-        esc(d.label) + '</span><b>' + counts[i] + "</b></div>";
+      return '<div style="display:flex;align-items:center;gap:8px">' +
+        '<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:' + d.color + '"></span> ' +
+        esc(d.label) + '<b>' + counts[i] + "</b></div>";
     }).join("") + "</div>";
     host.innerHTML = '<div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">' + svg + legend + "</div>";
   }
@@ -287,7 +542,7 @@
       var price = money(p.price) + (p.old ? ' <small style="color:var(--muted);text-decoration:line-through">' + money(p.old) + "</small>" : "");
       var st = p.active === false ? '<span class="st st-cancel">Ẩn</span>' : '<span class="st st-done">Đang bán</span>';
       return "<tr>" +
-        '<td class="cell-name"><div style="display:flex;align-items:center;gap:10px"><img class="prod-thumb" src="' + esc(p.img) + '" alt="" loading="lazy"><span><b>' + esc(p.name) + "</b>" + badge + "</span></div></td>" +
+        '<td class="cell-name" title="' + esc(p.name) + '"><div style="display:flex;align-items:center;gap:10px"><img class="prod-thumb" src="' + esc(p.img) + '" alt="" loading="lazy"><span><b>' + esc(p.name) + "</b>" + badge + "</span></div></td>" +
         "<td>" + esc(p.cat) + "</td>" +
         '<td class="cell-mono">' + price + "</td>" +
         "<td>★ " + esc(p.rating || "—") + " <small style='color:var(--muted)'>(" + esc(p.reviews || 0) + ")</small></td>" +
@@ -300,7 +555,7 @@
         '<div class="row-actions"><button class="mini-btn" data-pedit="' + esc(p.id) + '" type="button">Sửa</button><button class="mini-btn danger" data-pdel="' + esc(p.id) + '" type="button">Xoá</button></div></div>';
     }).join("");
   }
-  $("prodSearch").addEventListener("input", function () { prodFilter = this.value.trim().toLowerCase(); renderProducts(); });
+  $("prodSearch").addEventListener("input", debounce(function () { prodFilter = this.value.trim().toLowerCase(); renderProducts(); }, 180));
 
   function compressDataUrl(dataUrl, cb) {
     var img = new Image();
@@ -323,6 +578,7 @@
 
   var editingProdId = null;
   function openProd(id) {
+    rememberFocus();
     editingProdId = id || null;
     $("prodErr").textContent = "";
     var p = id ? SHOP.getProduct(id) : null;
@@ -345,20 +601,29 @@
     document.body.style.overflow = "hidden";
     setTimeout(function () { $("pName").focus(); }, 60);
   }
-  function closeProd() { $("prodOverlay").classList.remove("open"); document.body.style.overflow = ""; editingProdId = null; $("pImgFile").value = ""; $("pImgPreview").style.display = "none"; }
+  function closeProd() { $("prodOverlay").classList.remove("open"); document.body.style.overflow = ""; editingProdId = null; $("pImgFile").value = ""; $("pImgPreview").style.display = "none"; setImgBusy(false); restoreFocus(); }
+  var imgBusy = false;
+  function prodSubmitBtn() { return $("prodForm") ? $("prodForm").querySelector('button[type="submit"]') : null; }
+  function setImgBusy(busy) {
+    imgBusy = busy;
+    var b = prodSubmitBtn(); if (b) b.disabled = busy;
+  }
   $("addProdBtn").addEventListener("click", function () { openProd(null); });
   $("pImgFile").addEventListener("change", function () {
     var f = this.files && this.files[0];
     if (!f) return;
     if (!/^image\//.test(f.type)) { toast("Tệp không phải ảnh", true); this.value = ""; return; }
+    setImgBusy(true);
     var reader = new FileReader();
     reader.onload = function (ev) {
       compressDataUrl(ev.target.result, function (out) {
         $("pImg").value = out;
         var pv = $("pImgPreview"); pv.src = out; pv.style.display = "block";
         if (out.length > 400000) toast("Ảnh khá lớn, có thể chiếm nhiều bộ nhớ trình duyệt", true);
+        setImgBusy(false);
       });
     };
+    reader.onerror = function () { setImgBusy(false); toast("Không đọc được tệp ảnh", true); };
     reader.readAsDataURL(f);
   });
   $("pImg").addEventListener("input", function () {
@@ -371,6 +636,7 @@
   $("prodForm").addEventListener("submit", function (e) {
     e.preventDefault();
     var err = $("prodErr"); err.textContent = "";
+    if (imgBusy) { err.textContent = "Đang xử lý ảnh, vui lòng đợi…"; return; }
     var name = $("pName").value.trim(), cat = $("pCat").value.trim();
     var price = parseInt($("pPrice").value, 10);
     if (!name) { err.textContent = "Vui lòng nhập tên sản phẩm."; $("pName").focus(); return; }
@@ -386,9 +652,10 @@
       char: $("pChar").checked, featured: $("pFeatured").checked, active: $("pActive").checked,
       desc: $("pDesc").value.trim()
     };
-    SHOP.upsertProduct(rec);
+    var wasEditing = !!editingProdId;
+    if (!SHOP.upsertProduct(rec)) { err.textContent = "Không lưu được — bộ nhớ trình duyệt đã đầy (ảnh quá lớn)."; toast("Không lưu được — bộ nhớ trình duyệt đã đầy (ảnh quá lớn).", true); return; }
     closeProd(); renderProducts(); refreshCounts();
-    toast(editingProdId ? "Đã cập nhật sản phẩm" : "Đã thêm sản phẩm mới");
+    toast(wasEditing ? "Đã cập nhật sản phẩm" : "Đã thêm sản phẩm mới");
   });
 
   /* ============================================================
@@ -413,7 +680,7 @@
       return;
     }
     function sel(o) {
-      return '<select class="st-sel" data-ostatus="' + esc(o.id) + '">' + STATUSES.map(function (s) {
+      return '<select class="st-sel" data-ostatus="' + esc(o.id) + '" data-prev="' + esc(o.status || "Mới") + '">' + STATUSES.map(function (s) {
         return '<option' + (s === o.status ? " selected" : "") + ">" + esc(s) + "</option>";
       }).join("") + "</select>";
     }
@@ -430,7 +697,7 @@
         '<div class="row-actions"><button class="mini-btn" data-oview="' + esc(o.id) + '" type="button">Xem</button><button class="mini-btn danger" data-odel="' + esc(o.id) + '" type="button">Xoá</button></div></div>';
     }).join("");
   }
-  $("orderSearch").addEventListener("input", function () { orderFilter = this.value.trim().toLowerCase(); renderOrders(); });
+  $("orderSearch").addEventListener("input", debounce(function () { orderFilter = this.value.trim().toLowerCase(); renderOrders(); }, 180));
 
   function viewOrder(id) {
     var o = SHOP.getOrders().filter(function (x) { return x.id === id; })[0]; if (!o) return;
@@ -498,7 +765,7 @@
       return;
     }
     function sel(b) {
-      return '<select class="st-sel" data-bstatus="' + esc(b.id) + '">' + STATUSES.map(function (s) {
+      return '<select class="st-sel" data-bstatus="' + esc(b.id) + '" data-prev="' + esc(b.status || "Mới") + '">' + STATUSES.map(function (s) {
         return '<option' + (s === b.status ? " selected" : "") + ">" + esc(s) + "</option>";
       }).join("") + "</select>";
     }
@@ -543,7 +810,7 @@
     rows.innerHTML = all.map(function (m) {
       var d = m.data || {};
       var unread = m.read ? "" : ' <span class="st st-unread">Mới</span>';
-      return '<tr style="' + (m.read ? "" : "font-weight:600") + '"><td class="cell-name"><b>' + esc(d["c-name"] || "—") + "</b>" + unread + "</td><td>" + esc(d["c-topic"] || "—") +
+      return '<tr style="' + (m.read ? "" : "font-weight:600") + '"><td class="cell-name" title="' + esc(d["c-name"] || "—") + '"><b>' + esc(d["c-name"] || "—") + "</b>" + unread + "</td><td>" + esc(d["c-topic"] || "—") +
         '</td><td class="cell-mono">' + esc(d["c-phone"] || d["c-email"] || "—") + '</td><td class="cell-mono">' + esc(fmtDate(m.at)) +
         '</td><td><div class="row-actions"><button class="mini-btn" data-mview="' + esc(m.id) + '" type="button">Xem</button><button class="mini-btn danger" data-mdel="' + esc(m.id) + '" type="button">Xoá</button></div></td></tr>';
     }).join("");
@@ -568,8 +835,8 @@
   }
 
   /* ---------- detail modal ---------- */
-  function openDetail() { $("detailOverlay").classList.add("open"); document.body.style.overflow = "hidden"; }
-  function closeDetail() { $("detailOverlay").classList.remove("open"); document.body.style.overflow = ""; }
+  function openDetail() { rememberFocus(); $("detailOverlay").classList.add("open"); document.body.style.overflow = "hidden"; }
+  function closeDetail() { $("detailOverlay").classList.remove("open"); document.body.style.overflow = ""; restoreFocus(); }
   $("detailClose").addEventListener("click", closeDetail);
   $("detailCloseBtn").addEventListener("click", closeDetail);
   $("detailOverlay").addEventListener("click", function (e) { if (e.target === $("detailOverlay")) closeDetail(); });
@@ -587,9 +854,17 @@
   }
   $("setForm").addEventListener("submit", function (e) {
     e.preventDefault();
+    var setErr = $("setErr"); if (setErr) setErr.textContent = "";
+    var email = $("setEmail").value.trim();
+    /* a bad email flows into the public mailto: via applySettings — block save + toast on it */
+    if (email && !/.+@.+\..+/.test(email)) {
+      if (setErr) setErr.textContent = "Email không hợp lệ.";
+      $("setEmail").focus();
+      return;
+    }
     SHOP.saveSettings({
       shopName: $("setShopName").value.trim(), tagline: $("setTagline").value.trim(),
-      hotline: $("setHotline").value.trim(), email: $("setEmail").value.trim(),
+      hotline: $("setHotline").value.trim(), email: email,
       address: $("setAddress").value.trim(), hours: $("setHours").value.trim(),
       facebook: $("setFacebook").value.trim(), instagram: $("setInstagram").value.trim(), tiktok: $("setTiktok").value.trim(),
       promo: $("setPromo").value.trim()
@@ -620,7 +895,7 @@
     }
     rows.innerHTML = list.map(function (s) {
       var coord = (typeof s.lat === "number" ? s.lat.toFixed(4) : "—") + ", " + (typeof s.lng === "number" ? s.lng.toFixed(4) : "—");
-      return '<tr><td class="cell-name"><b>' + esc(s.name) + "</b>" + (s.tag ? '<span class="tg">' + esc(s.tag) + "</span>" : "") + "</td><td>" + esc(s.city || "—") +
+      return '<tr><td class="cell-name" title="' + esc(s.name) + '"><b>' + esc(s.name) + "</b>" + (s.tag ? '<span class="tg">' + esc(s.tag) + "</span>" : "") + "</td><td>" + esc(s.city || "—") +
         "</td><td>" + esc(s.address || "—") + "</td><td>" + esc(s.hours || "—") + '</td><td class="cell-coord">' + coord +
         '</td><td><div class="row-actions"><button class="mini-btn" data-sedit="' + esc(s.id) + '" type="button">Sửa</button><button class="mini-btn danger" data-sdel="' + esc(s.id) + '" type="button">Xoá</button></div></td></tr>';
     }).join("");
@@ -632,11 +907,11 @@
         '<div class="row-actions"><button class="mini-btn" data-sedit="' + esc(s.id) + '" type="button">Sửa</button><button class="mini-btn danger" data-sdel="' + esc(s.id) + '" type="button">Xoá</button></div></div>';
     }).join("");
   }
-  $("searchInput").addEventListener("input", function () { storeFilter = this.value.trim().toLowerCase(); renderStores(); });
+  $("searchInput").addEventListener("input", debounce(function () { storeFilter = this.value.trim().toLowerCase(); renderStores(); }, 180));
   function deleteStore(id) {
     var s = DS.getStores().filter(function (x) { return x.id === id; })[0]; if (!s) return;
     if (!confirm('Xoá điểm bán "' + s.name + '"?')) return;
-    DS.saveStores(DS.getStores().filter(function (x) { return x.id !== id; }));
+    if (!DS.saveStores(DS.getStores().filter(function (x) { return x.id !== id; }))) { toast("Không lưu được điểm bán — bộ nhớ đầy.", true); return; }
     renderStores(); refreshCounts(); toast("Đã xoá điểm bán");
   }
 
@@ -668,6 +943,7 @@
     } catch (err) { hasLeaflet = false; $("editorMap").hidden = true; $("mapFallback").hidden = false; $("geocodeBtn").hidden = true; }
   }
   function openStore(id) {
+    rememberFocus();
     editingStoreId = id || null;
     $("editorErr").textContent = ""; $("geoStatus").textContent = ""; $("geoStatus").className = "geo-status";
     var s = id ? (DS.getStores().filter(function (x) { return x.id === id; })[0] || null) : null;
@@ -685,25 +961,36 @@
     }
     setTimeout(function () { $("fName").focus(); }, 60);
   }
-  function closeStore() { $("editorOverlay").classList.remove("open"); document.body.style.overflow = ""; editingStoreId = null; }
+  function closeStore() { $("editorOverlay").classList.remove("open"); document.body.style.overflow = ""; editingStoreId = null; restoreFocus(); }
   $("addBtn").addEventListener("click", function () { openStore(null); });
   $("editorClose").addEventListener("click", closeStore);
   $("editorCancel").addEventListener("click", closeStore);
   $("editorOverlay").addEventListener("click", function (e) { if (e.target === $("editorOverlay")) closeStore(); });
   $("geocodeBtn").addEventListener("click", function () {
+    var btn = this;
+    if (btn.disabled) return;
     var addr = $("fAddress").value.trim(), city = $("fCity").value.trim(), status = $("geoStatus");
     if (!addr && !city) { status.className = "geo-status err"; status.textContent = "Hãy nhập địa chỉ hoặc thành phố trước."; return; }
     var q = [addr, city, "Vietnam"].filter(Boolean).join(", ");
+    /* disable + loading state: rapid clicks fire concurrent Nominatim requests (which rate-limit) */
+    var label = btn.textContent;
+    btn.disabled = true; btn.textContent = "⏳ Đang tìm…";
     status.className = "geo-status"; status.textContent = "Đang tìm toạ độ…";
+    /* snapshot the open editor so a stale response can't overwrite a pin the owner moved/closed to */
+    var reqStoreId = editingStoreId, wasOpen = $("editorOverlay").classList.contains("open");
+    function stale() { return !$("editorOverlay").classList.contains("open") || editingStoreId !== reqStoreId; }
     fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(q), { headers: { "Accept": "application/json" } })
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(function (data) {
+        if (!wasOpen || stale()) return;   // editor closed or switched record mid-request — ignore
         if (data && data.length) {
           var lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+          if (isNaN(lat) || isNaN(lng)) { status.className = "geo-status err"; status.textContent = "Toạ độ trả về không hợp lệ."; return; }
           setLatLng(lat, lng, true); status.className = "geo-status ok"; status.textContent = "✓ Đã tìm thấy: " + lat.toFixed(4) + ", " + lng.toFixed(4);
         } else { status.className = "geo-status err"; status.textContent = "Không tìm thấy toạ độ. Hãy thử nhập rõ hơn hoặc đặt ghim thủ công."; }
       })
-      .catch(function () { status.className = "geo-status err"; status.textContent = "Không kết nối được dịch vụ tìm toạ độ. Bạn vẫn có thể nhập lat/lng thủ công."; });
+      .catch(function () { if (!stale()) { status.className = "geo-status err"; status.textContent = "Không kết nối được dịch vụ tìm toạ độ. Bạn vẫn có thể nhập lat/lng thủ công."; } })
+      .then(function () { btn.disabled = false; btn.textContent = label; });
   });
   $("editorForm").addEventListener("submit", function (e) {
     e.preventDefault();
@@ -723,8 +1010,10 @@
       if (idx === -1) { err.textContent = "Không tìm thấy bản ghi."; return; }
       record.id = editingStoreId; all[idx] = record;
     } else { record.id = DS.uid(); all.push(record); }
-    DS.saveStores(all); closeStore(); renderStores(); refreshCounts();
-    toast(editingStoreId ? "Đã cập nhật điểm bán" : "Đã thêm điểm bán mới");
+    var wasEditingStore = !!editingStoreId;
+    if (!DS.saveStores(all)) { err.textContent = "Không lưu được điểm bán — bộ nhớ đầy."; toast("Không lưu được điểm bán — bộ nhớ đầy.", true); return; }
+    closeStore(); renderStores(); refreshCounts();
+    toast(wasEditingStore ? "Đã cập nhật điểm bán" : "Đã thêm điểm bán mới");
   });
 
   /* ============================================================
@@ -736,7 +1025,7 @@
     var of = t.closest("[data-ofilter]"); if (of) { orderStatusFilter = of.getAttribute("data-ofilter"); document.querySelectorAll(".is-ofilter").forEach(function (b) { b.classList.toggle("active", b === of); }); renderOrders(); return; }
     var go = t.closest("[data-go]"); if (go) { showView(go.getAttribute("data-go")); return; }
     var pe = t.closest("[data-pedit]"); if (pe) { openProd(pe.getAttribute("data-pedit")); return; }
-    var pd = t.closest("[data-pdel]"); if (pd) { var p = SHOP.getProduct(pd.getAttribute("data-pdel")); if (p && confirm('Xoá sản phẩm "' + p.name + '"?')) { SHOP.deleteProduct(p.id); renderProducts(); refreshCounts(); toast("Đã xoá sản phẩm"); } return; }
+    var pd = t.closest("[data-pdel]"); if (pd) { var p = SHOP.getProduct(pd.getAttribute("data-pdel")); if (p && confirm('Xoá sản phẩm "' + p.name + '"?')) { if (!SHOP.deleteProduct(p.id)) { toast("Không lưu được — bộ nhớ trình duyệt đã đầy.", true); return; } renderProducts(); refreshCounts(); toast("Đã xoá sản phẩm"); } return; }
     var ov = t.closest("[data-oview]"); if (ov) { viewOrder(ov.getAttribute("data-oview")); return; }
     var od = t.closest("[data-odel]"); if (od) { if (confirm("Xoá đơn hàng này?")) { SHOP.deleteOrder(od.getAttribute("data-odel")); renderOrders(); refreshCounts(); toast("Đã xoá đơn hàng"); } return; }
     var cp = t.closest("[data-custphone]"); if (cp) { var ph = cp.getAttribute("data-custphone"); orderFilter = (ph === "—" ? "" : ph).toLowerCase(); $("orderSearch").value = (ph === "—" ? "" : ph); orderStatusFilter = ""; document.querySelectorAll(".is-ofilter").forEach(function (b) { b.classList.toggle("active", b.getAttribute("data-ofilter") === ""); }); showView("orders"); return; }
@@ -752,16 +1041,27 @@
     var rs = t.closest("[data-reset]"); if (rs) { resetDataset(rs.getAttribute("data-reset")); return; }
   });
   document.addEventListener("change", function (e) {
-    var os = e.target.closest("[data-ostatus]"); if (os) { SHOP.updateOrder(os.getAttribute("data-ostatus"), { status: os.value }); refreshCounts(); toast("Đã cập nhật trạng thái đơn"); return; }
-    var bs = e.target.closest("[data-bstatus]"); if (bs) { SHOP.updateBooking(bs.getAttribute("data-bstatus"), { status: bs.value }); refreshCounts(); toast("Đã cập nhật trạng thái"); return; }
+    var os = e.target.closest("[data-ostatus]");
+    if (os) {
+      /* destructive 'Đã huỷ' transition: confirm; if declined, revert the select and bail (no toast) */
+      if (os.value === "Đã huỷ" && !confirm("Chuyển đơn sang ĐÃ HUỶ? Doanh thu sẽ không tính đơn này.")) { os.value = os.getAttribute("data-prev") || "Mới"; return; }
+      if (!SHOP.updateOrder(os.getAttribute("data-ostatus"), { status: os.value })) { toast("Không lưu được — bộ nhớ trình duyệt đã đầy.", true); renderOrders(); return; }
+      os.setAttribute("data-prev", os.value); refreshCounts(); toast("Đã cập nhật trạng thái đơn"); return;
+    }
+    var bs = e.target.closest("[data-bstatus]");
+    if (bs) {
+      if (bs.value === "Đã huỷ" && !confirm("Chuyển yêu cầu sang ĐÃ HUỶ?")) { bs.value = bs.getAttribute("data-prev") || "Mới"; return; }
+      if (!SHOP.updateBooking(bs.getAttribute("data-bstatus"), { status: bs.value })) { toast("Không lưu được — bộ nhớ trình duyệt đã đầy.", true); renderBookings(); return; }
+      bs.setAttribute("data-prev", bs.value); refreshCounts(); toast("Đã cập nhật trạng thái"); return;
+    }
   });
 
   /* ============================================================
      EXPORT / IMPORT / RESET (per dataset)
      ============================================================ */
   var DATASETS = {
-    products: { label: "sản phẩm", file: "dali-san-pham.json", get: function () { return SHOP.getProducts(); }, save: function (l) { SHOP.saveProducts(l); }, reset: function () { SHOP.resetProducts(); }, rerender: function () { renderProducts(); }, validate: validateProducts, importable: true },
-    stores:   { label: "điểm bán",  file: "dali-diem-ban.json",  get: function () { return DS.getStores(); },   save: function (l) { DS.saveStores(l); },   reset: function () { DS.resetStores(); },   rerender: function () { renderStores(); },   validate: validateStores,   importable: true },
+    products: { label: "sản phẩm", file: "dali-san-pham.json", get: function () { return SHOP.getProducts(); }, save: function (l) { return SHOP.saveProducts(l); }, reset: function () { SHOP.resetProducts(); }, rerender: function () { renderProducts(); }, validate: validateProducts, importable: true },
+    stores:   { label: "điểm bán",  file: "dali-diem-ban.json",  get: function () { return DS.getStores(); },   save: function (l) { return DS.saveStores(l); },   reset: function () { DS.resetStores(); },   rerender: function () { renderStores(); },   validate: validateStores,   importable: true },
     orders:   { label: "đơn hàng",  file: "dali-don-hang.json",  get: function () { return SHOP.getOrders(); },   importable: false },
     bookings: { label: "đặt dịch vụ", file: "dali-dat-dich-vu.json", get: function () { return SHOP.getBookings(); }, importable: false },
     messages: { label: "tin nhắn",  file: "dali-tin-nhan.json",  get: function () { return SHOP.getMessages(); }, importable: false }
@@ -808,6 +1108,7 @@
   /* ---------- JSON modal ---------- */
   var jsonMode = "export", jsonDataset = "products";
   function openJson(mode, key) {
+    rememberFocus();
     jsonMode = mode; jsonDataset = key;
     var ds = DATASETS[key]; if (!ds) return;
     $("jsonErr").textContent = "";
@@ -826,7 +1127,7 @@
     $("jsonOverlay").classList.add("open"); document.body.style.overflow = "hidden";
     setTimeout(function () { area.focus(); }, 60);
   }
-  function closeJson() { $("jsonOverlay").classList.remove("open"); document.body.style.overflow = ""; }
+  function closeJson() { $("jsonOverlay").classList.remove("open"); document.body.style.overflow = ""; restoreFocus(); }
   $("jsonClose").addEventListener("click", closeJson);
   $("jsonCancel").addEventListener("click", closeJson);
   $("jsonOverlay").addEventListener("click", function (e) { if (e.target === $("jsonOverlay")) closeJson(); });
@@ -846,17 +1147,19 @@
     try { parsed = JSON.parse($("jsonArea").value); } catch (e) { errEl.textContent = "JSON không hợp lệ: " + e.message; return; }
     var clean;
     try { clean = ds.validate(parsed); } catch (msg) { errEl.textContent = String(msg); return; }
-    ds.save(clean); closeJson();
+    if (!confirm("Nhập sẽ THAY THẾ toàn bộ " + ds.label + " hiện tại (" + ds.get().length + " mục) bằng " + clean.length + " mục mới. Tiếp tục?")) return;
+    if (!ds.save(clean)) { errEl.textContent = "Không lưu được — bộ nhớ trình duyệt đã đầy."; return; }
+    closeJson();
     if (jsonDataset === "stores") { storeFilter = ""; $("searchInput").value = ""; }
     if (jsonDataset === "products") { prodFilter = ""; $("prodSearch").value = ""; }
     if (ds.rerender) ds.rerender(); refreshCounts();
     toast("Đã nhập " + clean.length + " " + ds.label);
   });
 
-  /* global Esc closes any open modal */
+  /* global Esc closes any open modal
+     (stat cards are now real <button>s — native Enter/Space activation + the
+     [data-go] click delegate handle keyboard, so no custom key branch needed) */
   document.addEventListener("keydown", function (e) {
-    var goKey = e.target && e.target.closest && e.target.closest("[data-go]");
-    if (goKey && (e.key === "Enter" || e.key === " " || e.key === "Spacebar")) { e.preventDefault(); showView(goKey.getAttribute("data-go")); return; }
     if (e.key !== "Escape") return;
     [["editorOverlay", closeStore], ["prodOverlay", closeProd], ["detailOverlay", closeDetail], ["jsonOverlay", closeJson]].forEach(function (pair) {
       if ($(pair[0]).classList.contains("open")) pair[1]();

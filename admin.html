@@ -89,6 +89,7 @@
   .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .toolbar .btn { padding: 11px 18px; font-size: .92rem; }
   .btn--xs { padding: 9px 14px !important; font-size: .85rem !important; box-shadow: none; }
+  .btn[disabled], .btn--xs[disabled], .btn:disabled, .btn--xs:disabled { opacity: .6; cursor: not-allowed; pointer-events: none; }
   .toolbar-spacer { flex: 1 1 auto; }
 
   .admin-search { display: flex; align-items: center; gap: 10px; background: #fff; border: 1.5px solid var(--line);
@@ -100,11 +101,20 @@
   /* ---- Stat cards (dashboard) ---- */
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
   .stat-card { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px;
-    box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 2px; cursor: pointer; transition: transform .18s, box-shadow .18s; }
+    box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 2px; cursor: pointer; transition: transform .18s, box-shadow .18s;
+    font: inherit; text-align: left; width: 100%; }
   .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
   .stat-card .ic { font-size: 1.5rem; }
   .stat-card .num { font-size: 1.9rem; font-weight: 800; color: var(--green-700); line-height: 1.1; }
+  .stat-card .num.is-attn { color: #d8483a; }
+  .stat-card .num.is-name { font-size: 1.15rem; line-height: 1.25; }
   .stat-card .lbl { font-size: .82rem; color: var(--muted); font-weight: 600; }
+  .stat-card .sub { font-size: .76rem; color: var(--muted); font-weight: 600; }
+  .stat-card .delta { font-size: .8rem; font-weight: 800; align-self: flex-start;
+    margin-top: 2px; padding: 1px 8px; border-radius: 999px; }
+  .stat-card .delta.up { color: var(--green-700); background: var(--green-100); }
+  .stat-card .delta.down { color: #d8483a; background: #fff0f1; }
+  .stat-card .delta.flat { color: var(--muted); background: var(--bg-soft); }
 
   /* ---- Data tables ---- */
   .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--line); }
@@ -115,7 +125,8 @@
   table.dtable tbody td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   table.dtable tbody tr:last-child td { border-bottom: 0; }
   table.dtable tbody tr:hover { background: var(--green-50); }
-  .cell-name b { display: block; color: var(--ink); }
+  .cell-name { max-width: 320px; }
+  .cell-name b { display: block; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cell-name .tg { display: inline-block; margin-top: 3px; font-size: .7rem; font-weight: 700;
     color: var(--green-700); background: var(--green-100); padding: 1px 8px; border-radius: 999px; }
   .cell-coord, .cell-mono { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
@@ -132,8 +143,8 @@
   .st-new   { background: #e3f0fb; color: #1d6fa5; }
   .st-ok    { background: #fff3df; color: #b25e00; }
   .st-done  { background: var(--green-100); color: var(--green-700); }
-  .st-cancel{ background: #f1f1f1; color: #777; }
-  .st-unread{ background: #ffeef0; color: #d8483a; }
+  .st-cancel{ background: #f1f1f1; color: #595959; }
+  .st-unread{ background: #ffeef0; color: #b3261e; }
   select.st-sel { font: inherit; font-size: .82rem; font-weight: 700; padding: 6px 8px; border-radius: 8px;
     border: 1.5px solid var(--line); background: #fff; color: var(--ink-2); cursor: pointer; }
 
@@ -297,9 +308,9 @@
         <span class="tb-spacer"></span>
         <label class="tb-search">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
-          <input type="search" placeholder="Tìm nhanh…" aria-label="Tìm kiếm">
+          <input id="globalSearch" type="search" placeholder="Tìm nhanh…" aria-label="Tìm kiếm">
         </label>
-        <button class="tb-icon" type="button" aria-label="Thông báo">🔔</button>
+        <button id="bellBtn" class="tb-icon" type="button" aria-label="Thông báo">🔔</button>
         <div class="tb-avatar"><span class="av" aria-hidden="true">A</span><span class="who"><b>Admin</b><small>Quản trị viên</small></span></div>
       </header>
 
@@ -318,7 +329,14 @@
           <span class="count-pill" id="ovDate"></span></div>
         <div class="stat-grid" id="statGrid"></div>
       </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Chỉ số kinh doanh</h2><span class="toolbar-spacer"></span>
+          <span class="count-pill">Cập nhật theo cửa sổ doanh thu</span></div>
+        <div class="stat-grid" id="kpiGrid"></div>
+      </div>
       <div class="panel"><div class="panel-head"><h2>Doanh thu</h2><span class="toolbar-spacer"></span><button class="btn btn--ghost btn--xs" data-revrange="7" type="button">7 ngày</button><button class="btn btn--ghost btn--xs" data-revrange="30" type="button">30 ngày</button></div><div id="revChart"></div></div>
+      <div class="panel"><div class="panel-head"><h2>Doanh thu theo danh mục</h2></div><div id="catRevChart"></div></div>
+      <div class="panel"><div class="panel-head"><h2>Sản phẩm bán chạy</h2></div><div id="topProducts"></div></div>
       <div class="panel"><div class="panel-head"><h2>Trạng thái đơn hàng</h2></div><div id="statusDonut"></div></div>
       <div class="panel">
         <div class="panel-head"><h2>Đơn hàng gần đây</h2></div>
@@ -445,13 +463,14 @@
             <div class="field"><label for="setEmail">Email</label><input id="setEmail" type="email"></div>
             <div class="field full"><label for="setAddress">Địa chỉ</label><input id="setAddress" type="text"></div>
             <div class="field"><label for="setHours">Giờ mở cửa</label><input id="setHours" type="text"></div>
-            <div class="field"><label for="setFacebook">Facebook (URL)</label><input id="setFacebook" type="text"></div>
-            <div class="field"><label for="setInstagram">Instagram (URL)</label><input id="setInstagram" type="text"></div>
-            <div class="field"><label for="setTiktok">TikTok (URL)</label><input id="setTiktok" type="text"></div>
+            <div class="field"><label for="setFacebook">Facebook (URL)</label><input id="setFacebook" type="url" placeholder="https://facebook.com/..."></div>
+            <div class="field"><label for="setInstagram">Instagram (URL)</label><input id="setInstagram" type="url" placeholder="https://instagram.com/..."></div>
+            <div class="field"><label for="setTiktok">TikTok (URL)</label><input id="setTiktok" type="url" placeholder="https://tiktok.com/@..."></div>
             <div class="field full"><label for="setPromo">Thanh khuyến mãi (mỗi mục cách nhau bằng " · ")</label>
               <textarea id="setPromo" rows="2"></textarea></div>
           </div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">
+          <p class="geo-status err" id="setErr" role="alert" style="margin-top:14px"></p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
             <button class="btn" type="submit">💾 Lưu cài đặt</button>
             <button class="btn btn--ghost btn--xs" id="setReset" type="button">♻️ Khôi phục mặc định</button>
           </div>
@@ -572,8 +591,8 @@
 
 <div class="a-toast-wrap" id="toastWrap" aria-live="polite"></div>
 
-<script src="assets/js/stores.js?v=14"></script>
-<script src="assets/js/shop-data.js?v=1"></script>
-<script src="assets/js/admin.js?v=8"></script>
+<script src="assets/js/stores.js?v=15"></script>
+<script src="assets/js/shop-data.js?v=2"></script>
+<script src="assets/js/admin.js?v=11"></script>
 </body>
 </html>

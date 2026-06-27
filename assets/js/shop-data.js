@@ -78,11 +78,12 @@
     var idx = -1;
     for (var i = 0; i < list.length; i++) if (list[i].id === rec.id) { idx = i; break; }
     if (idx >= 0) list[idx] = rec; else list.push(rec);
-    saveProducts(list);
-    return rec;
+    var ok = saveProducts(list);
+    rec.__saved = ok;     // surface write success while keeping rec as the return value
+    return ok;
   }
   function deleteProduct(id) {
-    saveProducts(getProducts().filter(function (p) { return p.id !== id; }));
+    return saveProducts(getProducts().filter(function (p) { return p.id !== id; }));
   }
   /* products as an id->product map (for the cart engine in main.js) */
   function catalogMap() {
@@ -112,7 +113,7 @@
   function updateOrder(id, patch) {
     var list = getOrders();
     for (var i = 0; i < list.length; i++) if (list[i].id === id) { for (var k in patch) list[i][k] = patch[k]; break; }
-    saveOrders(list);
+    return saveOrders(list);
   }
   function deleteOrder(id) { saveOrders(getOrders().filter(function (x) { return x.id !== id; })); }
 
@@ -129,7 +130,7 @@
   function updateBooking(id, patch) {
     var list = getBookings();
     for (var i = 0; i < list.length; i++) if (list[i].id === id) { for (var k in patch) list[i][k] = patch[k]; break; }
-    saveBookings(list);
+    return saveBookings(list);
   }
   function deleteBooking(id) { saveBookings(getBookings().filter(function (x) { return x.id !== id; })); }
 

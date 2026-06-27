@@ -43,8 +43,8 @@
   }
   function saveStores(arr) {
     if (!Array.isArray(arr)) return false;
-    localStorage.setItem(KEY, JSON.stringify(arr));
-    return true;
+    try { localStorage.setItem(KEY, JSON.stringify(arr)); return true; }
+    catch (e) { return false; }
   }
   function resetStores() { localStorage.removeItem(KEY); }
   function isCustomized() { try { return !!localStorage.getItem(KEY); } catch (e) { return false; } }
