@@ -249,6 +249,90 @@
   .mini-btn:focus-visible, .modal-close:focus-visible, .a-link:focus-visible, .tab:focus-visible,
   .stat-card:focus-visible, .btn:focus-visible, .btn--xs:focus-visible, .json-area:focus-visible,
   select.st-sel:focus-visible { outline: 2px solid var(--green-700); outline-offset: 2px; }
+
+  /* ============================================================
+     BI BOARD — Tổng quan dashboard (clean finance-style board)
+     White rounded cards on a light tinted board. Reuses site tokens.
+     ============================================================ */
+  .board { background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius-lg);
+    padding: clamp(14px, 2.4vw, 22px); display: flex; flex-direction: column; gap: clamp(14px, 2.2vw, 20px); }
+
+  /* Generic board panel (white card chrome) */
+  .b-panel { background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(20,40,0,.06), 0 1px 2px rgba(0,0,0,.04);
+    padding: clamp(16px, 2.4vw, 22px); min-width: 0; }
+  .b-head { display: flex; align-items: center; gap: 11px; margin-bottom: 16px; }
+  .b-head .chip { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; display: grid;
+    place-items: center; font-size: 1rem; background: var(--green-100); color: var(--green-700); }
+  .b-head .txt { min-width: 0; flex: 1 1 auto; }
+  .b-head h3 { font-size: 1.02rem; font-weight: 800; color: var(--ink); line-height: 1.2; }
+  .b-head .sub { font-size: .76rem; color: var(--muted); font-weight: 600; margin-top: 1px; }
+  .b-head .meta { margin-left: auto; font-size: .76rem; font-weight: 700; color: var(--muted);
+    background: var(--bg-soft); border: 1px solid var(--line); padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+
+  /* ROW 1 — spotlight KPI cards */
+  .board-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(12px, 2vw, 18px); }
+  .kcard { background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(20,40,0,.06), 0 1px 2px rgba(0,0,0,.04);
+    padding: 18px 18px 16px; position: relative; overflow: hidden; min-width: 0;
+    display: flex; flex-direction: column; gap: 8px;
+    --accent: var(--green-700); --accent-soft: var(--green-100); }
+  .kcard::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: var(--accent); border-radius: 14px 0 0 14px; }
+  .kcard.is-green { --accent: var(--green-700); --accent-soft: var(--green-100); }
+  .kcard.is-blue  { --accent: #1d6fa5; --accent-soft: #e3f0fb; }
+  .kcard.is-teal  { --accent: #0a8a76; --accent-soft: #d8f1ec; }
+  .kcard .klabel { font-size: .8rem; font-weight: 700; color: var(--muted); }
+  .kcard .kvalue { font-size: clamp(1.5rem, 1rem + 1.6vw, 2rem); font-weight: 800; color: var(--ink);
+    line-height: 1.1; letter-spacing: -.02em; word-break: break-word; }
+  .kcard .kspark { width: 100%; height: 38px; display: block; }
+  .kcard .kspark svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  .trend-pill { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start;
+    font-size: .76rem; font-weight: 800; padding: 3px 10px; border-radius: 999px; line-height: 1.3; }
+  .trend-pill.up   { color: var(--green-700); background: var(--green-100); }
+  .trend-pill.down { color: #b3261e; background: #ffeef0; }
+  .trend-pill.flat { color: var(--muted); background: var(--bg-soft); }
+  .trend-pill .arr { font-size: .82rem; line-height: 1; }
+  .trend-pill .cmp { font-weight: 600; color: inherit; opacity: .82; }
+
+  /* Two-column panel rows */
+  .board-2col { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(14px, 2.2vw, 20px); align-items: stretch; }
+  .board-2col.wide-left { grid-template-columns: 1.4fr 1fr; }
+  .board-2col > .b-panel { display: flex; flex-direction: column; }
+
+  /* Goal panel — labelled progress bars */
+  .goal-rows { display: flex; flex-direction: column; gap: 16px; }
+  .goal-row { display: flex; flex-direction: column; gap: 6px; }
+  .goal-row .grow-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .goal-row .glabel { font-size: .86rem; font-weight: 700; color: var(--ink-2); }
+  .goal-row .gnums { font-size: .78rem; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .goal-row .gnums b { color: var(--green-700); }
+  .goal-row .gtrack { height: 9px; border-radius: 999px; background: var(--green-50);
+    border: 1px solid var(--line); overflow: hidden; }
+  .goal-row .gfill { height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--green-500), var(--green-700)); width: 0; transition: width .5s var(--ease-back, ease); }
+
+  /* Todo panel — clickable mini-stats */
+  .todo-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .todo-btn { font: inherit; text-align: left; cursor: pointer; border: 1px solid var(--line);
+    background: var(--bg-soft); border-radius: 12px; padding: 14px 14px; display: flex; flex-direction: column;
+    gap: 2px; min-width: 0; transition: transform .16s, box-shadow .16s, border-color .16s; }
+  .todo-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); border-color: var(--green-400); }
+  .todo-btn .tnum { font-size: 1.7rem; font-weight: 800; color: var(--green-700); line-height: 1.05; }
+  .todo-btn .tnum.is-attn { color: #b3261e; }
+  .todo-btn .tlbl { font-size: .78rem; font-weight: 700; color: var(--muted); }
+  .todo-btn .tic { font-size: 1rem; }
+
+  .b-empty { color: var(--muted); font-size: .86rem; font-weight: 600; padding: 8px 0; }
+
+  @media (max-width: 900px) {
+    .board-kpis { grid-template-columns: 1fr; }
+    .board-2col, .board-2col.wide-left { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .todo-row { grid-template-columns: 1fr; }
+  }
+  .kcard:focus-visible, .todo-btn:focus-visible { outline: 2px solid var(--green-700); outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -322,26 +406,82 @@
         <b>localStorage</b> của chính trình duyệt này. Môi trường thật cần xác thực &amp; lưu trữ phía backend.</span>
       </p>
 
-    <!-- ===== VIEW: OVERVIEW ===== -->
+    <!-- ===== VIEW: OVERVIEW (BI BOARD) ===== -->
     <section class="view" data-view="overview">
-      <div class="panel">
-        <div class="panel-head"><h2>Tổng quan</h2><span class="toolbar-spacer"></span>
-          <span class="count-pill" id="ovDate"></span></div>
-        <div class="stat-grid" id="statGrid"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-head"><h2>Chỉ số kinh doanh</h2><span class="toolbar-spacer"></span>
-          <span class="count-pill">Cập nhật theo cửa sổ doanh thu</span></div>
-        <div class="stat-grid" id="kpiGrid"></div>
-      </div>
-      <div class="panel"><div class="panel-head"><h2>Doanh thu</h2><span class="toolbar-spacer"></span><button class="btn btn--ghost btn--xs" data-revrange="7" type="button">7 ngày</button><button class="btn btn--ghost btn--xs" data-revrange="30" type="button">30 ngày</button></div><div id="revChart"></div></div>
-      <div class="panel"><div class="panel-head"><h2>Doanh thu theo danh mục</h2></div><div id="catRevChart"></div></div>
-      <div class="panel"><div class="panel-head"><h2>Sản phẩm bán chạy</h2></div><div id="topProducts"></div></div>
-      <div class="panel"><div class="panel-head"><h2>Trạng thái đơn hàng</h2></div><div id="statusDonut"></div></div>
-      <div class="panel">
-        <div class="panel-head"><h2>Đơn hàng gần đây</h2></div>
-        <div id="recentOrders"></div>
-      </div>
+      <div class="board">
+
+        <!-- ROW 1 — spotlight KPI cards -->
+        <div class="board-kpis">
+          <article class="kcard is-green" id="kRev" aria-label="Doanh thu tháng này"></article>
+          <article class="kcard is-blue"  id="kOrd" aria-label="Đơn hàng tháng này"></article>
+          <article class="kcard is-teal"  id="kAov" aria-label="Giá trị trung bình mỗi đơn"></article>
+        </div>
+
+        <!-- ROW 2 — goals + todo -->
+        <div class="board-2col">
+          <section class="b-panel" id="goalPanel">
+            <div class="b-head">
+              <span class="chip" aria-hidden="true">🎯</span>
+              <span class="txt"><h3>Mục tiêu tháng</h3><span class="sub">Tiến độ so với mục tiêu đã đặt</span></span>
+              <span class="count-pill" id="ovDate"></span>
+            </div>
+            <div class="goal-rows" id="goalRows"></div>
+          </section>
+          <section class="b-panel" id="todoPanel">
+            <div class="b-head">
+              <span class="chip" aria-hidden="true">📌</span>
+              <span class="txt"><h3>Cần xử lý</h3><span class="sub">Việc đang chờ bạn xem</span></span>
+            </div>
+            <div class="todo-row" id="todoRow"></div>
+          </section>
+        </div>
+
+        <!-- ROW 3 — 12-month revenue bars + status donut -->
+        <div class="board-2col wide-left">
+          <section class="b-panel">
+            <div class="b-head">
+              <span class="chip" aria-hidden="true">📈</span>
+              <span class="txt"><h3>Doanh thu 12 tháng</h3><span class="sub">Doanh thu theo từng tháng gần nhất</span></span>
+            </div>
+            <div id="revMonths"></div>
+          </section>
+          <section class="b-panel">
+            <div class="b-head">
+              <span class="chip" aria-hidden="true">🧾</span>
+              <span class="txt"><h3>Đơn theo trạng thái</h3><span class="sub">Phân bổ đơn hàng hiện tại</span></span>
+            </div>
+            <div id="statusDonut"></div>
+          </section>
+        </div>
+
+        <!-- ROW 4 — category revenue + top products -->
+        <div class="board-2col">
+          <section class="b-panel">
+            <div class="b-head">
+              <span class="chip" aria-hidden="true">🏷️</span>
+              <span class="txt"><h3>Doanh thu theo danh mục</h3><span class="sub">Danh mục bán chạy nhất</span></span>
+            </div>
+            <div id="catRevChart"></div>
+          </section>
+          <section class="b-panel">
+            <div class="b-head">
+              <span class="chip" aria-hidden="true">🎈</span>
+              <span class="txt"><h3>Top sản phẩm bán chạy</h3><span class="sub">Theo doanh thu tích luỹ</span></span>
+            </div>
+            <div id="topProducts"></div>
+          </section>
+        </div>
+
+        <!-- ROW 5 — recent orders (full width) -->
+        <section class="b-panel">
+          <div class="b-head">
+            <span class="chip" aria-hidden="true">🕑</span>
+            <span class="txt"><h3>Đơn hàng gần đây</h3><span class="sub">Những đơn mới nhất</span></span>
+          </div>
+          <div id="recentOrders"></div>
+        </section>
+
+      </div><!-- /.board -->
     </section>
 
     <!-- ===== VIEW: PRODUCTS ===== -->
@@ -468,6 +608,14 @@
             <div class="field"><label for="setTiktok">TikTok (URL)</label><input id="setTiktok" type="url" placeholder="https://tiktok.com/@..."></div>
             <div class="field full"><label for="setPromo">Thanh khuyến mãi (mỗi mục cách nhau bằng " · ")</label>
               <textarea id="setPromo" rows="2"></textarea></div>
+            <div class="field full"><label style="font-weight:700;color:var(--green-700)">🎯 Mục tiêu tháng (hiển thị ở Tổng quan)</label>
+              <span class="hint">Đặt mục tiêu để xem tiến độ trong thẻ “Mục tiêu tháng”. Để trống = giữ mặc định.</span></div>
+            <div class="field"><label for="setGoalRevenue">Mục tiêu doanh thu tháng (₫)</label>
+              <input id="setGoalRevenue" type="number" min="0" step="1000" placeholder="50000000"></div>
+            <div class="field"><label for="setGoalOrders">Mục tiêu đơn hàng</label>
+              <input id="setGoalOrders" type="number" min="0" step="1" placeholder="100"></div>
+            <div class="field"><label for="setGoalCustomers">Mục tiêu khách mới</label>
+              <input id="setGoalCustomers" type="number" min="0" step="1" placeholder="30"></div>
           </div>
           <p class="geo-status err" id="setErr" role="alert" style="margin-top:14px"></p>
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
@@ -592,7 +740,7 @@
 <div class="a-toast-wrap" id="toastWrap" aria-live="polite"></div>
 
 <script src="assets/js/stores.js?v=15"></script>
-<script src="assets/js/shop-data.js?v=2"></script>
-<script src="assets/js/admin.js?v=11"></script>
+<script src="assets/js/shop-data.js?v=3"></script>
+<script src="assets/js/admin.js?v=13"></script>
 </body>
 </html>

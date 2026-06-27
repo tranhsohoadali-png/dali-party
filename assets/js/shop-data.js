@@ -58,7 +58,9 @@
     address:  "123 Đường Hoa Mai, Hà Nội",
     hours:    "8:00 – 21:00 mỗi ngày",
     promo:    "🎈 Miễn phí giao hàng nội thành · ✨ Trang trí tận nơi · 🎀 Bơm khí Helium an toàn · 🎉 Thiết kế theo yêu cầu · 💚 8 năm đồng hành cùng 5.000+ bữa tiệc",
-    facebook: "#", instagram: "#", tiktok: "#"
+    facebook: "#", instagram: "#", tiktok: "#",
+    /* Monthly business goals — drive the "Mục tiêu tháng" progress bars on the admin Overview board. */
+    goalRevenue: 50000000, goalOrders: 100, goalCustomers: 30
   };
 
   /* ---------- PRODUCTS ---------- */

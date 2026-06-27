@@ -11,7 +11,6 @@
   var PASSCODE = "dali2026";
   var DS = window.DaliStores;   // stores
   var SHOP = window.DaliShop;   // products / orders / bookings / messages / settings
-  var revRange = 7;             // overview revenue chart window (days)
   var currentView = "overview"; // active view name (set by showView; used by global quick-search)
   var lastFocus = null;         // element focused before a modal opened (restored on close — a11y)
 
@@ -174,182 +173,232 @@
   /* ============================================================
      OVERVIEW
      ============================================================ */
-  function renderOverview() {
-    refreshCounts();
-    var products = SHOP.getProducts(), orders = SHOP.getOrders(),
-        bookings = SHOP.getBookings(), messages = SHOP.getMessages(), stores = DS.getStores();
-    var revenue = orders.filter(function (o) { return o.status !== "Đã huỷ"; })
-                        .reduce(function (s, o) { return s + (o.total || 0); }, 0);
-    var cards = [
-      { ic: "🎈", num: products.length, lbl: "Sản phẩm", view: "products" },
-      { ic: "🧾", num: orders.length, lbl: "Đơn hàng", view: "orders" },
-      { ic: "💰", num: money(revenue), lbl: "Doanh thu (chưa huỷ)", view: "orders" },
-      { ic: "📅", num: bookings.length, lbl: "Đặt dịch vụ", view: "bookings" },
-      { ic: "✉️", num: messages.length, lbl: "Tin nhắn", view: "messages" },
-      { ic: "📍", num: stores.length, lbl: "Điểm bán", view: "stores" }
-    ];
-    $("statGrid").innerHTML = cards.map(function (c) {
-      return '<button class="stat-card" type="button" data-go="' + c.view + '">' +
-        '<span class="ic">' + c.ic + '</span><span class="num">' + esc(c.num) + '</span><span class="lbl">' + esc(c.lbl) + "</span></button>";
-    }).join("");
-    var ov = $("ovDate");
-    try { ov.textContent = new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" }); } catch (e) {}
-
-    var recent = orders.slice(0, 5);
-    if (!recent.length) {
-      $("recentOrders").innerHTML = '<p style="color:var(--muted)">Chưa có đơn hàng nào. Khi khách bấm “Thanh toán” trên website, đơn sẽ xuất hiện ở đây.</p>';
-    } else {
-      var recTable =
-        '<div class="table-wrap"><table class="dtable"><thead><tr><th>Mã đơn</th><th>Khách</th><th>Tổng</th><th>Trạng thái</th><th>Thời gian</th></tr></thead><tbody>' +
-        recent.map(function (o) {
-          return "<tr><td><b>" + esc(o.code) + "</b></td><td>" + esc((o.customer && o.customer.name) || "—") +
-            "</td><td>" + money(o.total) + "</td><td>" + statusBadge(o.status) + '</td><td class="cell-mono">' + esc(fmtDate(o.at)) + "</td></tr>";
-        }).join("") + "</tbody></table></div>";
-      /* mobile twin: same .cards/.d-card pattern as every other view (display toggled by CSS @760px) */
-      var recCards = '<div class="cards">' + recent.map(function (o) {
-        return '<div class="d-card"><h4>' + esc(o.code) + " · " + money(o.total) + "</h4><p>👤 " + esc((o.customer && o.customer.name) || "—") +
-          "</p><p>" + statusBadge(o.status) + " · 🕐 " + esc(fmtDate(o.at)) + "</p></div>";
-      }).join("") + "</div>";
-      $("recentOrders").innerHTML = recTable + recCards;
+  /* ---- Month-bucket helpers (shared by the spotlight sparklines + 12-month bars) ----
+         A "month key" is YYYY-MM. last12Months() returns the 12 calendar months
+         ending with the current month, oldest → newest. ---- */
+  function monthKeyOf(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1); }
+  function last12Months() {
+    var out = [], now = new Date(); now.setHours(0, 0, 0, 0);
+    var y = now.getFullYear(), m = now.getMonth();
+    for (var i = 11; i >= 0; i--) {
+      var d = new Date(y, m - i, 1);
+      out.push({ key: monthKeyOf(d), label: pad2(d.getMonth() + 1) + "/" + String(d.getFullYear()).slice(2) });
     }
-
-    fillKpiGrid(orders, bookings, messages, products);
-    renderCatRevChart(orders);
-    renderTopProducts(orders);
-    renderRevChart(orders);
-    renderStatusDonut(orders);
+    return out;
   }
 
-  /* ---- Overview: detailed KPI cards (period revenue, time buckets, AOV,
-         action worklist, best-day / VIP / rates, catalog health).
-         Everything is computed from DaliShop data and degrades cleanly to
-         "0₫" / "—" on empty data. ---- */
-  function fillKpiGrid(orders, bookings, messages, products) {
-    var host = $("kpiGrid"); if (!host) return;
+  /* renderOverview — compute the board data ONCE, then drive every sub-renderer.
+     Every metric degrades cleanly on empty data (0₫ / 0% / flat / "Chưa có dữ liệu"). */
+  function renderOverview() {
+    refreshCounts();
+    var orders = SHOP.getOrders(), bookings = SHOP.getBookings(), messages = SHOP.getMessages();
+    var settings = SHOP.getSettings();
     var valid = orders.filter(function (o) { return o.status !== "Đã huỷ"; });
 
-    /* date keys built exactly like renderRevChart (today-based, pad2) */
-    var today = new Date(); today.setHours(0, 0, 0, 0);
-    function keyOf(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
-    var todayKey = keyOf(today);
-
-    /* Monday 00:00 of current week */
-    var weekStart = new Date(today.getTime());
-    var dow = (weekStart.getDay() + 6) % 7;            // 0 = Monday
-    weekStart = new Date(weekStart.getTime() - dow * 86400000);
-    var nowY = today.getFullYear(), nowM = today.getMonth();
-
-    /* ---- Period revenue + %-change vs previous window (tied to 7/30 toggle) ---- */
-    var curKeys = {}, prevKeys = {};
-    for (var i = revRange - 1; i >= 0; i--) curKeys[keyOf(new Date(today.getTime() - i * 86400000))] = 1;
-    for (var j = revRange; j < revRange * 2; j++) prevKeys[keyOf(new Date(today.getTime() - j * 86400000))] = 1;
-    var cur = 0, prev = 0;
-    valid.forEach(function (o) {
-      var k = (o.at || "").slice(0, 10);
-      if (curKeys[k]) cur += (o.total || 0);
-      else if (prevKeys[k]) prev += (o.total || 0);
-    });
-    var pct = prev > 0 ? Math.round((cur - prev) / prev * 100) : (cur > 0 ? 100 : 0);
-    var deltaHtml;
-    if (cur === 0 && prev === 0) deltaHtml = '<span class="delta flat">—</span>';
-    else if (cur >= prev) deltaHtml = '<span class="delta up">▲ ' + pct + '%</span>';
-    else deltaHtml = '<span class="delta down">▼ ' + Math.abs(pct) + '%</span>';
-
-    /* ---- Today / week / month revenue + order count ---- */
-    var tRev = 0, tN = 0, wRev = 0, wN = 0, mRev = 0, mN = 0;
+    /* --- per-month aggregates over the last 12 calendar months (valid orders only) --- */
+    var months = last12Months();
+    var idx = {};
+    var revSeries = [], ordSeries = [], aovSeries = [];
+    months.forEach(function (mo, i) { idx[mo.key] = i; mo.rev = 0; mo.ord = 0; mo.phones = {}; });
     valid.forEach(function (o) {
       var d = new Date(o.at);
-      if ((o.at || "").slice(0, 10) === todayKey) { tRev += (o.total || 0); tN++; }
-      if (!isNaN(d.getTime()) && d >= weekStart) { wRev += (o.total || 0); wN++; }
-      if (!isNaN(d.getTime()) && d.getFullYear() === nowY && d.getMonth() === nowM) { mRev += (o.total || 0); mN++; }
+      if (isNaN(d.getTime())) return;
+      var i = idx[monthKeyOf(d)];
+      if (i == null) return;
+      months[i].rev += (o.total || 0);
+      months[i].ord += 1;
+      var ph = (o.customer && o.customer.phone) || "";
+      if (ph) months[i].phones[ph] = 1;
+    });
+    months.forEach(function (mo) {
+      revSeries.push(mo.rev);
+      ordSeries.push(mo.ord);
+      aovSeries.push(mo.ord > 0 ? Math.round(mo.rev / mo.ord) : 0);
     });
 
-    /* ---- AOV + items per order ---- */
-    var aov = valid.length ? Math.round(valid.reduce(function (s, o) { return s + (o.total || 0); }, 0) / valid.length) : 0;
-    var totQty = valid.reduce(function (s, o) {
-      return s + (o.items || []).reduce(function (q, it) { return q + (it.qty || 0); }, 0);
-    }, 0);
-    var spo = valid.length ? (totQty / valid.length).toFixed(1) : "0";
+    /* current vs previous month (last two buckets) */
+    var cur = months[11], prev = months[10];
+    var curRev = cur.rev, prevRev = prev.rev;
+    var curOrd = cur.ord, prevOrd = prev.ord;
+    var curAov = cur.ord > 0 ? Math.round(cur.rev / cur.ord) : 0;
+    var prevAov = prev.ord > 0 ? Math.round(prev.rev / prev.ord) : 0;
+    var curCust = Object.keys(cur.phones).length;
 
-    /* ---- Best sales day across the current revRange window ---- */
-    var dayBuckets = {}, dayOrder = [];
-    for (var d2 = revRange - 1; d2 >= 0; d2--) {
-      var dd = new Date(today.getTime() - d2 * 86400000);
-      var dk = keyOf(dd);
-      dayBuckets[dk] = { label: pad2(dd.getDate()) + "/" + pad2(dd.getMonth() + 1), val: 0 };
-      dayOrder.push(dk);
+    /* this-month note (right-side meta on the goal panel) */
+    var ov = $("ovDate");
+    if (ov) {
+      try {
+        var nd = new Date();
+        ov.textContent = "Tháng " + (nd.getMonth() + 1) + "/" + nd.getFullYear();
+      } catch (e) { ov.textContent = ""; }
     }
-    valid.forEach(function (o) { var k = (o.at || "").slice(0, 10); if (dayBuckets[k]) dayBuckets[k].val += (o.total || 0); });
-    var best = null;
-    dayOrder.forEach(function (k) { var b = dayBuckets[k]; if (!best || b.val > best.val) best = b; });
 
-    /* ---- VIP customer (by phone, highest spend) ---- */
-    var byPhone = {};
-    orders.forEach(function (o) {
-      var ph = (o.customer && o.customer.phone) || "—";
-      var rec = byPhone[ph];
-      if (!rec) rec = byPhone[ph] = { name: (o.customer && o.customer.name) || "—", count: 0, spent: 0 };
-      rec.count++;
-      if (o.status !== "Đã huỷ") rec.spent += (o.total || 0);
-      rec.name = (o.customer && o.customer.name) || rec.name;
-    });
-    var custKeys = Object.keys(byPhone);
-    var custCount = custKeys.length;
-    var returning = 0, vip = null;
-    custKeys.forEach(function (k) {
-      var c = byPhone[k];
-      if (c.count > 1) returning++;
-      if (!vip || c.spent > vip.spent) vip = c;
+    /* ROW 1 — spotlight KPI cards */
+    fillSpotlight({
+      rev: { cur: curRev, prev: prevRev, series: revSeries, color: "var(--green-700)" },
+      ord: { cur: curOrd, prev: prevOrd, series: ordSeries, color: "#1d6fa5" },
+      aov: { cur: curAov, prev: prevAov, series: aovSeries, color: "#0a8a76" }
     });
 
-    /* ---- Completion / cancel rates (from raw status counts) ---- */
-    var total = orders.length;
-    var done = orders.filter(function (o) { return o.status === "Hoàn tất"; }).length;
-    var cancelled = orders.filter(function (o) { return o.status === "Đã huỷ"; }).length;
-    var completionRate = total ? Math.round(done / total * 100) : 0;
-    var cancelRate = total ? Math.round(cancelled / total * 100) : 0;
+    /* ROW 2 — goals + worklist */
+    renderGoals(settings, { rev: curRev, ord: curOrd, cust: curCust });
+    renderTodo(orders, bookings, messages);
 
-    /* ---- Action worklist counts ---- */
+    /* ROW 3 — 12-month bars + status donut */
+    renderRevMonths(months);
+    renderStatusDonut(orders);
+
+    /* ROW 4 — category revenue + top products */
+    renderCatRevChart(orders);
+    renderTopProducts(orders);
+
+    /* ROW 5 — recent orders */
+    renderRecentOrders(orders);
+  }
+
+  /* trend pct: prev>0 ? round((cur-prev)/prev*100) : (cur>0?100:0) */
+  function trendPct(cur, prev) {
+    return prev > 0 ? Math.round((cur - prev) / prev * 100) : (cur > 0 ? 100 : 0);
+  }
+  function trendPill(cur, prev) {
+    var pct = trendPct(cur, prev);
+    var cls, arr;
+    if (cur === prev) { cls = "flat"; arr = "—"; }
+    else if (cur > prev) { cls = "up"; arr = "▲"; }
+    else { cls = "down"; arr = "▼"; }
+    return '<span class="trend-pill ' + cls + '"><span class="arr" aria-hidden="true">' + arr + '</span>' +
+      esc(Math.abs(pct).toFixed(1)) + '% <span class="cmp">so với tháng trước</span></span>';
+  }
+
+  /* sparkAreaSVG — area+line+last-dot sparkline. Empty-safe: a flat baseline
+     when there's no spread (all zeros / single point). ~120×36 viewBox. */
+  function sparkAreaSVG(series, color) {
+    var W = 120, H = 36, pad = 3;
+    var vals = (series && series.length) ? series.map(function (v) { return Number(v) || 0; }) : [0];
+    if (vals.length === 1) vals = [vals[0], vals[0]];
+    var n = vals.length;
+    var max = Math.max.apply(null, vals), min = Math.min.apply(null, vals);
+    var span = max - min;
+    var innerH = H - pad * 2;
+    function x(i) { return pad + (n === 1 ? 0 : (i / (n - 1)) * (W - pad * 2)); }
+    function y(v) { return span > 0 ? (pad + (1 - (v - min) / span) * innerH) : (H / 2); }
+    var pts = vals.map(function (v, i) { return x(i).toFixed(1) + "," + y(v).toFixed(1); });
+    var line = "M" + pts.join(" L");
+    var area = line + " L" + x(n - 1).toFixed(1) + "," + (H - pad) + " L" + x(0).toFixed(1) + "," + (H - pad) + " Z";
+    var lx = x(n - 1).toFixed(1), ly = y(vals[n - 1]).toFixed(1);
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-hidden="true" focusable="false">' +
+      '<path d="' + area + '" fill="' + color + '" fill-opacity="0.15" stroke="none"/>' +
+      '<path d="' + line + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>' +
+      '<circle cx="' + lx + '" cy="' + ly + '" r="2.4" fill="' + color + '"/></svg>';
+  }
+
+  /* fillSpotlight — the 3 big-number KPI cards (revenue / orders / AOV). */
+  function fillSpotlight(d) {
+    function card(host, label, valueHtml, conf) {
+      var el = $(host); if (!el) return;
+      el.innerHTML =
+        '<span class="klabel">' + esc(label) + '</span>' +
+        '<span class="kvalue">' + valueHtml + '</span>' +
+        '<span class="kspark">' + sparkAreaSVG(conf.series, conf.color) + '</span>' +
+        trendPill(conf.cur, conf.prev);
+    }
+    card("kRev", "Doanh thu tháng này", esc(money(d.rev.cur)), d.rev);
+    card("kOrd", "Đơn hàng tháng này", esc(String(d.ord.cur)) + ' <span style="font-size:.62em;font-weight:700;color:var(--muted)">đơn</span>', d.ord);
+    card("kAov", "Giá trị TB/đơn", esc(money(d.aov.cur)), d.aov);
+  }
+
+  /* renderGoals — 3 labelled progress bars vs the owner-set monthly targets.
+     Blank/0 target → pct "—" and an empty track (never divide-by-zero). */
+  function renderGoals(settings, actual) {
+    var host = $("goalRows"); if (!host) return;
+    var rows = [
+      { label: "Doanh thu", actual: actual.rev, target: Number(settings.goalRevenue) || 0, money: true },
+      { label: "Đơn hàng", actual: actual.ord, target: Number(settings.goalOrders) || 0, money: false },
+      { label: "Khách mới", actual: actual.cust, target: Number(settings.goalCustomers) || 0, money: false }
+    ];
+    host.innerHTML = rows.map(function (r) {
+      var fmt = r.money ? money : function (v) { return String(v); };
+      var hasTarget = r.target > 0;
+      var pct = hasTarget ? Math.round(r.actual / r.target * 100) : 0;
+      var fillW = hasTarget ? Math.min(100, Math.max(0, pct)) : 0;
+      var pctTxt = hasTarget ? (pct + "%") : "—";
+      return '<div class="goal-row">' +
+        '<div class="grow-top">' +
+          '<span class="glabel">' + esc(r.label) + '</span>' +
+          '<span class="gnums"><b>' + esc(fmt(r.actual)) + '</b> / ' + esc(fmt(r.target)) + ' · ' + esc(pctTxt) + '</span>' +
+        '</div>' +
+        '<div class="gtrack"><div class="gfill" style="width:' + fillW + '%"></div></div>' +
+      '</div>';
+    }).join("");
+  }
+
+  /* renderTodo — 3 clickable mini-stats that reuse the [data-go] navigation delegate. */
+  function renderTodo(orders, bookings, messages) {
+    var host = $("todoRow"); if (!host) return;
     var newOrders = orders.filter(function (o) { return o.status === "Mới"; }).length;
-    var newBookings = bookings.filter(function (b) { return b.status === "Mới"; }).length;
     var unread = messages.filter(function (m) { return !m.read; }).length;
+    var newBookings = bookings.filter(function (b) { return b.status === "Mới"; }).length;
+    var items = [
+      { ic: "🧾", num: newOrders, lbl: "Đơn mới", go: "orders" },
+      { ic: "✉️", num: unread, lbl: "Tin chưa đọc", go: "messages" },
+      { ic: "📅", num: newBookings, lbl: "Đặt dịch vụ mới", go: "bookings" }
+    ];
+    host.innerHTML = items.map(function (it) {
+      var attn = it.num > 0 ? " is-attn" : "";
+      return '<button class="todo-btn" type="button" data-go="' + esc(it.go) + '">' +
+        '<span class="tic" aria-hidden="true">' + it.ic + '</span>' +
+        '<span class="tnum' + attn + '">' + esc(String(it.num)) + '</span>' +
+        '<span class="tlbl">' + esc(it.lbl) + '</span>' +
+      '</button>';
+    }).join("");
+  }
 
-    /* ---- Catalog health ---- */
-    var hidden = products.filter(function (p) { return p.active === false; }).length;
-    var onSale = products.filter(function (p) { return p.old && p.old > p.price; }).length;
+  /* renderRevMonths — clean vertical bar chart of the last 12 months' revenue.
+     Hand-rolled SVG, green bars, mm/yy labels, <title> tooltip, faint baseline. */
+  function renderRevMonths(months) {
+    var host = $("revMonths"); if (!host) return;
+    var max = 0; months.forEach(function (mo) { if (mo.rev > max) max = mo.rev; });
+    if (max <= 0) { host.innerHTML = '<p class="b-empty">Chưa có dữ liệu doanh thu.</p>'; return; }
 
-    var cards = [];
-    function card(opts) {
-      var attn = opts.attn ? " is-attn" : "";
-      var nameCls = opts.isName ? " is-name" : "";
-      var tag = opts.go ? "button" : "div";
-      var open = opts.go ? '<button class="stat-card" type="button" data-go="' + opts.go + '">' : '<div class="stat-card">';
-      var h = open;
-      if (opts.ic) h += '<span class="ic">' + opts.ic + '</span>';
-      h += '<span class="num' + attn + nameCls + '">' + esc(opts.num) + '</span>';
-      h += '<span class="lbl">' + esc(opts.lbl) + '</span>';
-      if (opts.delta) h += opts.delta;
-      if (opts.sub != null) h += '<span class="sub">' + esc(opts.sub) + '</span>';
-      return h + '</' + tag + '>';
+    var W = 700, H = 240, base = 200, plot = 174, n = months.length;
+    var slot = W / n, bw = Math.max(2, Math.min(46, slot * 0.56));
+    var bars = "", labels = "";
+    months.forEach(function (mo, i) {
+      var cx = i * slot + slot / 2;
+      var h = (mo.rev / max) * plot;
+      var y = base - h;
+      bars += '<rect x="' + (cx - bw / 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) +
+        '" height="' + h.toFixed(1) + '" rx="3" fill="var(--green-500)"><title>' +
+        esc(mo.label + ": " + money(mo.rev)) + "</title></rect>";
+      labels += '<text x="' + cx.toFixed(1) + '" y="' + (base + 16) +
+        '" text-anchor="middle" font-size="11" fill="var(--muted)">' + esc(mo.label) + "</text>";
+    });
+    host.innerHTML = '<svg viewBox="0 0 ' + W + " " + H + '" width="100%" role="img" ' +
+      'aria-label="Doanh thu 12 tháng" style="display:block;max-width:100%">' +
+      '<line x1="0" y1="' + base + '" x2="' + W + '" y2="' + base +
+      '" stroke="var(--line)" stroke-width="1"/>' + bars + labels + "</svg>";
+  }
+
+  /* renderRecentOrders — the latest 5 orders (table desktop / cards ≤760px). */
+  function renderRecentOrders(orders) {
+    var host = $("recentOrders"); if (!host) return;
+    var recent = orders.slice(0, 5);
+    if (!recent.length) {
+      host.innerHTML = '<p class="b-empty">Chưa có đơn hàng nào. Khi khách bấm “Thanh toán” trên website, đơn sẽ xuất hiện ở đây.</p>';
+      return;
     }
-
-    cards.push(card({ ic: "💸", num: money(cur), lbl: "Doanh thu " + revRange + " ngày", delta: deltaHtml }));
-    cards.push(card({ ic: "📈", num: money(aov), lbl: "Giá trị TB / đơn", sub: spo + " SP / đơn" }));
-    cards.push(card({ ic: "🌅", num: money(tRev), lbl: "Hôm nay", sub: tN + " đơn" }));
-    cards.push(card({ ic: "🗓️", num: money(wRev), lbl: "Tuần này", sub: wN + " đơn" }));
-    cards.push(card({ ic: "📆", num: money(mRev), lbl: "Tháng này", sub: mN + " đơn" }));
-    cards.push(card({ ic: "🏆", num: (best && best.val > 0) ? money(best.val) : "—", lbl: "Ngày bán tốt nhất", sub: (best && best.val > 0) ? best.label : "" }));
-    cards.push(card({ ic: "👑", num: (vip && vip.spent > 0) ? vip.name : "—", lbl: "Khách VIP", isName: !!(vip && vip.spent > 0), sub: (vip && vip.spent > 0) ? money(vip.spent) : "" }));
-    cards.push(card({ ic: "✅", num: total ? completionRate + "%" : "—", lbl: "Tỉ lệ hoàn tất" }));
-    cards.push(card({ ic: "🚫", num: total ? cancelRate + "%" : "—", lbl: "Tỉ lệ huỷ", attn: cancelRate > 0 }));
-    cards.push(card({ ic: "🧾", num: newOrders, lbl: "Đơn cần xử lý", go: "orders", attn: newOrders > 0 }));
-    cards.push(card({ ic: "📅", num: newBookings, lbl: "Đặt dịch vụ mới", go: "bookings", attn: newBookings > 0 }));
-    cards.push(card({ ic: "✉️", num: unread, lbl: "Tin chưa đọc", go: "messages", attn: unread > 0 }));
-    cards.push(card({ ic: "👥", num: custCount, lbl: "Khách hàng", go: "customers", sub: returning + " khách quay lại" }));
-    cards.push(card({ ic: "🙈", num: hidden, lbl: "Sản phẩm đang ẩn", go: "products", attn: hidden > 0 }));
-    cards.push(card({ ic: "🏷️", num: onSale, lbl: "Đang giảm giá", go: "products" }));
-
-    host.innerHTML = cards.join("");
+    var recTable =
+      '<div class="table-wrap"><table class="dtable"><thead><tr><th>Mã đơn</th><th>Khách</th><th>Tổng</th><th>Trạng thái</th><th>Thời gian</th></tr></thead><tbody>' +
+      recent.map(function (o) {
+        return "<tr><td><b>" + esc(o.code) + "</b></td><td>" + esc((o.customer && o.customer.name) || "—") +
+          "</td><td>" + money(o.total) + "</td><td>" + statusBadge(o.status) + '</td><td class="cell-mono">' + esc(fmtDate(o.at)) + "</td></tr>";
+      }).join("") + "</tbody></table></div>";
+    /* mobile twin: same .cards/.d-card pattern as every other view (display toggled by CSS @760px) */
+    var recCards = '<div class="cards">' + recent.map(function (o) {
+      return '<div class="d-card"><h4>' + esc(o.code) + " · " + money(o.total) + "</h4><p>👤 " + esc((o.customer && o.customer.name) || "—") +
+        "</p><p>" + statusBadge(o.status) + " · 🕐 " + esc(fmtDate(o.at)) + "</p></div>";
+    }).join("") + "</div>";
+    host.innerHTML = recTable + recCards;
   }
 
   /* ---- Overview: top-selling & top-revenue products (by order line name) ---- */
@@ -387,8 +436,7 @@
       tbl("Doanh thu cao nhất", byRev, false) + '</div>';
   }
 
-  /* ---- Overview: revenue-by-category mini horizontal-bar chart ----
-         Reuses the hand-rolled SVG approach of renderRevChart. ---- */
+  /* ---- Overview: revenue-by-category mini horizontal-bar chart (hand-rolled SVG) ---- */
   function renderCatRevChart(orders) {
     var host = $("catRevChart"); if (!host) return;
     var nameCat = {};
@@ -423,52 +471,6 @@
       'aria-label="Doanh thu theo danh mục" style="display:block;max-width:100%">' + rows + "</svg>";
   }
 
-  /* ---- Overview: revenue bar chart (hand-rolled SVG) ---- */
-  function renderRevChart(orders) {
-    var host = $("revChart"); if (!host) return;
-    // toggle active state on range buttons
-    document.querySelectorAll("[data-revrange]").forEach(function (b) {
-      b.classList.toggle("active", parseInt(b.getAttribute("data-revrange"), 10) === revRange);
-    });
-    var days = revRange;
-    var buckets = [];           // [{key,label,val}]
-    var index = {};
-    var today = new Date(); today.setHours(0, 0, 0, 0);
-    for (var i = days - 1; i >= 0; i--) {
-      var d = new Date(today.getTime() - i * 86400000);
-      var key = d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
-      var b = { key: key, label: pad2(d.getDate()) + "/" + pad2(d.getMonth() + 1), val: 0 };
-      index[key] = b; buckets.push(b);
-    }
-    orders.forEach(function (o) {
-      if (o.status === "Đã huỷ") return;
-      var k = (o.at || "").slice(0, 10);
-      if (index[k]) index[k].val += (o.total || 0);
-    });
-    var max = 0; buckets.forEach(function (b) { if (b.val > max) max = b.val; });
-    if (max <= 0) { host.innerHTML = '<p style="color:var(--muted)">Chưa có dữ liệu doanh thu.</p>'; return; }
-
-    var W = 700, H = 240, base = 200, plot = 180, n = buckets.length;
-    var slot = W / n, bw = Math.max(2, Math.min(40, slot * 0.6));
-    var every = days > 7 ? Math.ceil(n / 8) : 1;
-    var bars = "", labels = "";
-    buckets.forEach(function (b, i) {
-      var cx = i * slot + slot / 2;
-      var h = (b.val / max) * plot;
-      var y = base - h;
-      bars += '<rect x="' + (cx - bw / 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) +
-        '" height="' + h.toFixed(1) + '" rx="3" fill="var(--green-500)"><title>' +
-        esc(b.label + ": " + money(b.val)) + "</title></rect>";
-      if (i % every === 0 || i === n - 1) {
-        labels += '<text x="' + cx.toFixed(1) + '" y="' + (base + 16) +
-          '" text-anchor="middle" font-size="11" fill="var(--muted)">' + esc(b.label) + "</text>";
-      }
-    });
-    host.innerHTML = '<svg viewBox="0 0 ' + W + " " + H + '" width="100%" role="img" ' +
-      'aria-label="Biểu đồ doanh thu" style="display:block;max-width:100%">' +
-      '<line x1="0" y1="' + base + '" x2="' + W + '" y2="' + base +
-      '" stroke="var(--line)" stroke-width="1"/>' + bars + labels + "</svg>";
-  }
   function pad2(n) { return (n < 10 ? "0" : "") + n; }
 
   /* ---- Overview: order-status donut (hand-rolled SVG) ---- */
@@ -851,6 +853,10 @@
     $("setAddress").value = s.address || ""; $("setHours").value = s.hours || "";
     $("setFacebook").value = s.facebook || ""; $("setInstagram").value = s.instagram || ""; $("setTiktok").value = s.tiktok || "";
     $("setPromo").value = s.promo || "";
+    /* monthly goals (Overview board) */
+    if ($("setGoalRevenue")) $("setGoalRevenue").value = s.goalRevenue != null ? s.goalRevenue : "";
+    if ($("setGoalOrders")) $("setGoalOrders").value = s.goalOrders != null ? s.goalOrders : "";
+    if ($("setGoalCustomers")) $("setGoalCustomers").value = s.goalCustomers != null ? s.goalCustomers : "";
   }
   $("setForm").addEventListener("submit", function (e) {
     e.preventDefault();
@@ -862,12 +868,23 @@
       $("setEmail").focus();
       return;
     }
+    /* monthly goals: Number-coerced; blank → keep the current (already default-merged) value */
+    var cur = SHOP.getSettings();
+    function goalVal(id, fallback) {
+      var raw = $(id) ? $(id).value.trim() : "";
+      if (raw === "") return fallback;
+      var n = Number(raw);
+      return (isNaN(n) || n < 0) ? fallback : n;
+    }
     SHOP.saveSettings({
       shopName: $("setShopName").value.trim(), tagline: $("setTagline").value.trim(),
       hotline: $("setHotline").value.trim(), email: email,
       address: $("setAddress").value.trim(), hours: $("setHours").value.trim(),
       facebook: $("setFacebook").value.trim(), instagram: $("setInstagram").value.trim(), tiktok: $("setTiktok").value.trim(),
-      promo: $("setPromo").value.trim()
+      promo: $("setPromo").value.trim(),
+      goalRevenue: goalVal("setGoalRevenue", cur.goalRevenue),
+      goalOrders: goalVal("setGoalOrders", cur.goalOrders),
+      goalCustomers: goalVal("setGoalCustomers", cur.goalCustomers)
     });
     toast("Đã lưu cài đặt");
   });
@@ -1021,7 +1038,6 @@
      ============================================================ */
   document.addEventListener("click", function (e) {
     var t = e.target;
-    var rr = t.closest("[data-revrange]"); if (rr) { revRange = parseInt(rr.getAttribute("data-revrange"), 10) || 7; renderOverview(); return; }
     var of = t.closest("[data-ofilter]"); if (of) { orderStatusFilter = of.getAttribute("data-ofilter"); document.querySelectorAll(".is-ofilter").forEach(function (b) { b.classList.toggle("active", b === of); }); renderOrders(); return; }
     var go = t.closest("[data-go]"); if (go) { showView(go.getAttribute("data-go")); return; }
     var pe = t.closest("[data-pedit]"); if (pe) { openProd(pe.getAttribute("data-pedit")); return; }
