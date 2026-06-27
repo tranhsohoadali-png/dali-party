@@ -337,30 +337,9 @@
 </head>
 <body>
 
-<!-- ============ LOGIN GATE ============ -->
-<section class="gate" id="gateView">
-    <div class="container">
-      <form class="gate-card" id="gateForm" autocomplete="off">
-        <div class="lock" aria-hidden="true">🔐</div>
-        <h1>Đăng nhập quản trị</h1>
-        <p class="sub">Nhập mã truy cập để quản lý toàn bộ hệ thống.</p>
-        <div class="field">
-          <label for="passInput">Mã truy cập</label>
-          <input type="password" id="passInput" placeholder="••••••••" autocomplete="current-password" required>
-        </div>
-        <p class="gate-err" id="gateErr" role="alert"></p>
-        <button class="btn btn--block" type="submit">Đăng nhập</button>
-        <p class="note note--warn" style="margin-top:18px; text-align:left;">
-          <span class="ic" aria-hidden="true">⚠️</span>
-          <span>Cổng đăng nhập <b>phía trình duyệt</b> cho bản demo, <b>không bảo mật thật</b>.
-          Khi triển khai thực tế hãy thay bằng xác thực phía máy chủ. Mã mặc định: <code>dali2026</code>.</span>
-        </p>
-      </form>
-    </div>
-  </section>
-
-  <!-- ============ DASHBOARD (sidebar shell — thiết kế Stitch) ============ -->
-  <div class="admin-shell" id="dashView" hidden>
+<!-- ============ DASHBOARD (sidebar shell — thiết kế Stitch) ============ -->
+  <!-- Quyền truy cập được bảo vệ phía máy chủ bằng nginx Basic Auth trên /admin — không có cổng phía trình duyệt. -->
+  <div class="admin-shell" id="dashView">
     <aside class="side">
       <a href="/" class="side-brand" aria-label="Dali Party — về trang chủ">
         <svg class="mark" viewBox="0 0 60 86" aria-hidden="true">
@@ -382,7 +361,6 @@
       </nav>
       <div class="side-foot">
         <a class="a-link" href="/">← Xem website</a>
-        <button class="btn btn--soft btn--xs" id="logoutBtn" type="button" hidden>Đăng xuất</button>
       </div>
     </aside>
 
@@ -741,6 +719,6 @@
 
 <script src="assets/js/stores.js?v=15"></script>
 <script src="assets/js/shop-data.js?v=3"></script>
-<script src="assets/js/admin.js?v=13"></script>
+<script src="assets/js/admin.js?v=14"></script>
 </body>
 </html>

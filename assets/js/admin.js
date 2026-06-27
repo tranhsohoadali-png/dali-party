@@ -7,8 +7,6 @@
 (function () {
   "use strict";
 
-  var SESSION_KEY = "dali_admin_session";
-  var PASSCODE = "dali2026";
   var DS = window.DaliStores;   // stores
   var SHOP = window.DaliShop;   // products / orders / bookings / messages / settings
   var currentView = "overview"; // active view name (set by showView; used by global quick-search)
@@ -76,30 +74,15 @@
   }
 
   /* ============================================================
-     AUTH GATE (client-side demo only)
+     ACCESS — protected server-side by nginx Basic Auth on /admin.
+     No client-side gate; just render the dashboard.
      ============================================================ */
-  function isAuthed() { try { return sessionStorage.getItem(SESSION_KEY) === "1"; } catch (e) { return false; } }
   function showDashboard() {
-    $("gateView").hidden = true; $("dashView").hidden = false; $("logoutBtn").hidden = false;
+    $("dashView").hidden = false;
     populateCatList();
     refreshCounts();
     showView("overview");
   }
-  function showGate() {
-    $("gateView").hidden = false; $("dashView").hidden = true; $("logoutBtn").hidden = true;
-    var pi = $("passInput"); if (pi) { pi.value = ""; pi.focus(); }
-  }
-  $("gateForm").addEventListener("submit", function (e) {
-    e.preventDefault();
-    if ($("passInput").value === PASSCODE) {
-      try { sessionStorage.setItem(SESSION_KEY, "1"); } catch (err) {}
-      $("gateErr").textContent = ""; showDashboard(); toast("Đăng nhập thành công");
-    } else { $("gateErr").textContent = "Mã truy cập không đúng. Thử lại."; $("passInput").select(); }
-  });
-  $("logoutBtn").addEventListener("click", function () {
-    try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
-    showGate(); toast("Đã đăng xuất");
-  });
 
   /* ============================================================
      TABS / VIEW ROUTER
@@ -1190,5 +1173,5 @@
       "<p>Không tìm thấy <code>shop-data.js</code> hoặc <code>stores.js</code>. Hãy đảm bảo cả hai được nạp trước admin.js.</p></div>";
     return;
   }
-  if (isAuthed()) showDashboard(); else showGate();
+  showDashboard();
 })();
