@@ -1,0 +1,5 @@
+# Build artifacts & local-only
+dali-party.zip
+.stitch_ref/
+.tmp_*/
+.claude/

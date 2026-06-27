@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Điểm bán — Hệ thống cửa hàng & nhà sách phân phối | Dali Party</title>
+<meta name="description" content="Điểm bán Dali Party — mua trực tiếp tại quầy bóng bay & trang trí chính hãng tại nhà sách và cửa hàng đối tác trên toàn quốc: Hà Nội, TP.HCM, Đà Nẵng.">
+<link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/styles.css?v=13">
+<style>[data-reveal],[data-stagger]>*{opacity:1;transform:none}html{scroll-behavior:auto}.balloon-layer{display:none}</style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  /* ---- Điểm bán page-specific helpers ---- */
+  /* store search box (reused from lien-he) */
+  .store-search {
+    display: flex; align-items: center; gap: 10px; background: #fff; border: 1.5px solid var(--line);
+    border-radius: 999px; padding: 12px 18px; margin-bottom: 6px; transition: border-color .2s, box-shadow .2s;
+  }
+  .store-search:focus-within { border-color: var(--green-400); box-shadow: 0 0 0 4px var(--green-100); }
+  .store-search svg { color: var(--muted); flex-shrink: 0; }
+  .store-search input { border: 0; background: none; outline: none; width: 100%; color: var(--ink); }
+  .store-card .btn { margin-top: 12px; }
+  .store-card .store-tag {
+    display: inline-block; margin-top: 2px; padding: 2px 10px; border-radius: 999px;
+    background: var(--green-100); color: var(--green-700); font-size: .72rem; font-weight: 700; letter-spacing: .02em;
+  }
+
+  /* ---- richer styled map ---- */
+  .map-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .map-pin {
+    position: absolute; font-size: 1.7rem; transform: translate(-50%, -100%);
+    filter: drop-shadow(0 4px 5px rgba(60,90,30,.35)); animation: pinBob 3s ease-in-out infinite;
+  }
+  @keyframes pinBob { 0%,100%{ transform: translate(-50%,-100%); } 50%{ transform: translate(-50%,-118%); } }
+  .map-label {
+    position: absolute; z-index: 4; transform: translate(-50%, 0); padding: 3px 11px; border-radius: 999px;
+    background: rgba(255,255,255,.94); box-shadow: var(--shadow-sm); font-size: .74rem; font-weight: 700;
+    color: var(--green-700); white-space: nowrap;
+  }
+  .map-card {
+    position: absolute; left: 20px; bottom: 20px; z-index: 3; background: rgba(255,255,255,.94);
+    backdrop-filter: blur(6px); border-radius: var(--radius); padding: 14px 18px; box-shadow: var(--shadow);
+    display: flex; align-items: center; gap: 12px; max-width: 78%;
+  }
+  .map-card .dot { width: 38px; height: 38px; border-radius: 12px; background: var(--green-100); display: grid; place-items: center; font-size: 1.3rem; flex-shrink: 0; }
+  .map-card b { display: block; font-size: .96rem; }
+  .map-card span { font-size: .8rem; color: var(--muted); }
+
+  /* ---- nearest-store control ---- */
+  .locator-tools { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .btn-nearest { width: 100%; justify-content: center; }
+  .geo-note { font-size: .76rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .geo-msg {
+    font-size: .82rem; font-weight: 600; padding: 10px 14px; border-radius: var(--radius-sm);
+    background: var(--green-100); color: var(--green-700); line-height: 1.4;
+  }
+  .geo-msg.is-error { background: #fdeceb; color: #c0392b; }
+  .geo-msg[hidden] { display: none; }
+
+  /* distance badge on store cards */
+  .store-dist {
+    display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; padding: 3px 11px;
+    border-radius: 999px; background: var(--green-700); color: #fff; font-size: .76rem; font-weight: 700;
+  }
+  .store-card .store-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .store-empty { color: var(--muted); font-size: .9rem; padding: 30px 10px; text-align: center; }
+
+  /* ---- real Leaflet map ---- */
+  #storeMap { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+  .locator .map-panel { min-height: 460px; }
+
+  /* Nhãn chủ quyền Hoàng Sa / Trường Sa trên bản đồ */
+  .vn-island__lbl { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    transform: translate(-50%, -50%); pointer-events: none; line-height: 1.1;
+    background: rgba(255,255,255,.93); color: #b3261e; font-weight: 700; font-size: 11px;
+    padding: 2px 8px; border-radius: 7px; border: 1px solid rgba(179,38,30,.35); box-shadow: 0 1px 5px rgba(0,0,0,.2); }
+  .vn-island__dot { width: 8px; height: 8px; background: #d8483a; border: 1.5px solid #fff; border-radius: 50%; flex-shrink: 0; }
+  .vn-island__lbl b { color: #1a1c18; font-weight: 800; }
+  @media (max-width: 1024px) { .locator .map-panel { min-height: 400px; } }
+  @media (max-width: 760px)  { .locator .map-panel { min-height: 340px; } }
+  .map-panel .leaflet-popup-content { max-width: 230px; }
+  .map-panel .leaflet-popup-content { font-family: inherit; font-size: .85rem; }
+  .map-panel .leaflet-popup-content b { color: var(--green-700); }
+  .map-panel .leaflet-popup-content .popup-dir {
+    display: inline-block; margin-top: 8px; font-weight: 700; color: var(--green-700);
+  }
+  .map-panel .leaflet-popup-content a { color: var(--green-700); }
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Bỏ qua tới nội dung</a>
+
+<!-- ============ HEADER ============ -->
+<header class="site-header">
+  <div class="container nav">
+    <a href="index.html" class="brand" aria-label="Dali Party trang chủ">
+      <svg class="brand-mark" viewBox="0 0 60 86" aria-hidden="true">
+        <defs><radialGradient id="bm" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#b2dd6b"/><stop offset="1" stop-color="#6fa82e"/></radialGradient></defs>
+        <path d="M30 4 C45 4 54 18 54 32 C54 50 38 62 31 64 L29 64 C22 62 6 50 6 32 C6 18 15 4 30 4Z" fill="url(#bm)"/>
+        <path d="M28 64l4 0-2 6z" fill="#6fa82e"/>
+        <ellipse cx="22" cy="24" rx="6" ry="9" fill="#fff" opacity=".5"/>
+      </svg>
+      <span class="brand-name"><b>Dali Party</b><span>Bóng bay &amp; Trang trí</span></span>
+    </a>
+
+    <nav class="nav-links" aria-label="Điều hướng chính">
+      <a href="index.html">Trang chủ</a>
+      <a href="cua-hang.html">Cửa hàng</a>
+      <a href="diem-ban.html" class="active">Điểm bán</a>
+      <a href="goi-dich-vu.html">Gói dịch vụ</a>
+      <a href="lien-he.html">Liên hệ</a>
+    </nav>
+
+    <div class="nav-actions">
+      <form class="search-box" data-search role="search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+        <input type="search" placeholder="Tìm bóng bay…" aria-label="Tìm kiếm">
+      </form>
+      <button class="icon-btn" id="cartBtn" aria-label="Giỏ hàng">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/><path d="M2 3h3l2.4 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L23 7H6"/></svg>
+        <span class="cart-count" aria-live="polite">0</span>
+      </button>
+      <button class="icon-btn nav-toggle" id="navToggle" aria-label="Mở menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- mobile menu -->
+<div class="mobile-menu" id="mobileMenu">
+  <div class="mm-head">
+    <b style="color:var(--green-600);font-size:1.2rem">Dali Party</b>
+    <button class="icon-btn" id="menuClose" aria-label="Đóng menu"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <a href="index.html">Trang chủ</a>
+  <a href="cua-hang.html">Cửa hàng</a>
+  <a href="diem-ban.html" class="active">Điểm bán</a>
+  <a href="goi-dich-vu.html">Gói dịch vụ</a>
+  <a href="lien-he.html">Liên hệ</a>
+</div>
+
+<main id="main">
+<!-- ============ PAGE HERO ============ -->
+<section class="page-hero">
+  <div class="balloon-layer" data-balloons="4" aria-hidden="true"></div>
+  <div class="container">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="index.html">Trang chủ</a> <span>/</span> <span>Điểm bán</span>
+    </nav>
+    <h1>Mua trực tiếp <span class="text-grad">tại quầy</span></h1>
+    <p>Bạn muốn tận tay chọn bóng bay Dali Party chính hãng? Ghé ngay các nhà sách &amp; cửa hàng đối tác phân phối trên toàn quốc — từ Hà Nội, TP.HCM đến Đà Nẵng — để mua trực tiếp tại quầy, xem mẫu thật và được tư vấn tận nơi. 🎈</p>
+  </div>
+</section>
+
+<!-- ============ STORE LOCATOR ============ -->
+<section class="section">
+  <div class="container">
+    <div class="section-head" data-reveal>
+      <span class="eyebrow">Tìm điểm bán gần bạn</span>
+      <h2>Hệ thống <span class="text-grad">cửa hàng &amp; nhà sách đối tác</span></h2>
+      <p>Sản phẩm Dali Party được phân phối chính hãng tại các điểm bán dưới đây — chọn một điểm để xem vị trí trên bản đồ và ghé mua trực tiếp.</p>
+    </div>
+
+    <div class="locator" data-reveal>
+      <!-- LEFT: store list (filled by inline script from DaliStores) -->
+      <div id="storeList" class="store-list">
+        <div class="locator-tools">
+          <button class="btn btn--lg btn-nearest" id="btnNearest" type="button">
+            📍 Tìm cửa hàng gần nhất
+          </button>
+          <span class="geo-note">🔒 Cần cho phép truy cập vị trí</span>
+          <p class="geo-msg" id="geoMsg" role="status" aria-live="polite" hidden></p>
+        </div>
+
+        <label class="store-search">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+          <input type="search" id="storeSearch" placeholder="Nhập địa chỉ, quận, huyện…" aria-label="Tìm điểm bán">
+        </label>
+
+        <div id="storeCards"></div>
+      </div>
+
+      <!-- RIGHT: styled Vietnam map (SVG fallback) + Leaflet map (progressive) -->
+      <div class="map-panel" id="mapPanel">
+        <div class="map-fallback" id="mapFallback">
+        <svg class="map-art" viewBox="0 0 600 760" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <defs>
+            <linearGradient id="seaBg" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#dff1fb"/>
+              <stop offset="1" stop-color="#c4e6f6"/>
+            </linearGradient>
+            <linearGradient id="landFill" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#dcefbf"/>
+              <stop offset="1" stop-color="#bfe098"/>
+            </linearGradient>
+          </defs>
+          <!-- sea -->
+          <rect width="600" height="760" fill="url(#seaBg)"/>
+          <!-- soft sea ripples -->
+          <g stroke="#ffffff" stroke-width="3" fill="none" opacity=".5" stroke-linecap="round">
+            <path d="M380 120 q18 -10 36 0 t36 0"/>
+            <path d="M420 200 q18 -10 36 0 t36 0"/>
+            <path d="M150 560 q18 -10 36 0 t36 0"/>
+            <path d="M200 640 q18 -10 36 0 t36 0"/>
+          </g>
+          <!-- Vietnam landmass (stylised S-shape) -->
+          <path d="M205 70
+                   C250 55 300 70 300 110
+                   C300 150 250 175 240 215
+                   C232 250 270 270 290 300
+                   C312 332 300 372 285 405
+                   C268 442 250 470 245 510
+                   C240 552 232 600 210 645
+                   C195 678 175 700 160 698
+                   C146 696 150 660 158 628
+                   C172 572 198 520 210 470
+                   C220 430 214 408 196 392
+                   C172 372 150 350 150 312
+                   C150 268 188 246 196 210
+                   C202 182 178 168 170 140
+                   C162 110 178 82 205 70 Z"
+                fill="url(#landFill)" stroke="#a7cf7a" stroke-width="2.5"/>
+          <!-- island dots (Hoàng Sa / Trường Sa hint) -->
+          <g fill="#a7cf7a" opacity=".8">
+            <circle cx="430" cy="360" r="5"/><circle cx="452" cy="378" r="4"/>
+            <circle cx="470" cy="540" r="5"/><circle cx="492" cy="560" r="4"/><circle cx="478" cy="582" r="3"/>
+          </g>
+          <!-- inland rivers / roads -->
+          <g stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round" opacity=".75">
+            <path d="M200 130 C220 160 200 190 218 210"/>
+            <path d="M250 470 C235 500 250 540 230 580"/>
+          </g>
+          <!-- north / south green patches -->
+          <circle cx="215" cy="150" r="20" fill="#aed884" opacity=".55"/>
+          <circle cx="232" cy="560" r="22" fill="#aed884" opacity=".55"/>
+        </svg>
+
+        <!-- region labels -->
+        <span class="map-label" style="left:34%;top:14%">Hà Nội</span>
+        <span class="map-label" style="left:48%;top:48%">Đà Nẵng</span>
+        <span class="map-label" style="left:40%;top:78%">TP.HCM</span>
+
+        <!-- location pins -->
+        <span class="map-pin" style="left:34%;top:19%;animation-delay:0s">📍</span>
+        <span class="map-pin" style="left:48%;top:53%;animation-delay:.5s">📍</span>
+        <span class="map-pin" style="left:40%;top:83%;animation-delay:1s">📍</span>
+        <span class="map-pin" style="left:33%;top:23%;animation-delay:1.4s">📍</span>
+
+        <div class="map-card">
+          <span class="dot">🗺️</span>
+          <div>
+            <b>Bản đồ điểm bán toàn quốc</b>
+            <span>6 điểm bán tại Hà Nội, TP.HCM &amp; Đà Nẵng</span>
+          </div>
+        </div>
+        </div><!-- /.map-fallback -->
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HOW TO BUY AT COUNTER ============ -->
+<section class="section section--tint">
+  <div class="container">
+    <div class="section-head" data-reveal>
+      <span class="eyebrow">Đơn giản &amp; nhanh chóng</span>
+      <h2>Cách mua <span class="text-grad">tại quầy</span></h2>
+      <p>Chỉ với 4 bước, bạn đã có ngay bóng bay Dali Party chính hãng cầm tay mang về.</p>
+    </div>
+    <div class="steps" data-stagger>
+      <div class="step"><h3>Tìm điểm bán gần bạn</h3><p>Chọn nhà sách hoặc cửa hàng đối tác thuận tiện nhất trong danh sách phía trên.</p></div>
+      <div class="step"><h3>Tới quầy Dali Party</h3><p>Ghé khu trưng bày Dali Party tại điểm bán để xem trực tiếp mẫu bóng và combo.</p></div>
+      <div class="step"><h3>Chọn sản phẩm yêu thích</h3><p>Thoải mái lựa bóng bay, phụ kiện và combo trang trí hợp với dịp của bạn.</p></div>
+      <div class="step"><h3>Thanh toán &amp; mang về</h3><p>Thanh toán ngay tại quầy và mang sản phẩm về — không cần chờ giao hàng.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BECOME A DISTRIBUTOR CTA ============ -->
+<section class="section">
+  <div class="container">
+    <div class="cta-band" data-reveal="zoom">
+      <span class="deco" aria-hidden="true" style="font-size:5rem;top:-10px;left:24px">🏪</span>
+      <span class="deco" aria-hidden="true" style="font-size:4rem;bottom:-6px;right:30px">🤝</span>
+      <h2>Trở thành đại lý phân phối</h2>
+      <p>Bạn là nhà sách, cửa hàng hay đại lý muốn phân phối bóng bay &amp; trang trí Dali Party? Hợp tác cùng chúng tôi để mang thế giới phép thuật đến gần khách hàng của bạn hơn.</p>
+      <div class="hero__cta" style="justify-content:center">
+        <a href="lien-he.html" class="btn btn--dark btn--lg">Liên hệ hợp tác
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 60 86" aria-hidden="true"><path d="M30 4 C45 4 54 18 54 32 C54 50 38 62 31 64 L29 64 C22 62 6 50 6 32 C6 18 15 4 30 4Z" fill="#8cc63f"/><path d="M28 64l4 0-2 6z" fill="#6fa82e"/><ellipse cx="22" cy="24" rx="6" ry="9" fill="#fff" opacity=".5"/></svg>
+          <span class="brand-name"><b>Dali Party</b><span>Bóng bay &amp; Trang trí</span></span>
+        </div>
+        <p class="footer-about">Cửa hàng bóng bay &amp; trang trí sự kiện của Công ty Sản xuất &amp; Thương mại Dali. Mang thế giới phép thuật đến mọi bữa tiệc của bạn.</p>
+        <div class="socials">
+          <a href="#" aria-label="Facebook"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.2c-1.2 0-1.6.8-1.6 1.6V12h2.7l-.4 2.9h-2.3v7A10 10 0 0 0 22 12Z"/></svg></a>
+          <a href="#" aria-label="Instagram"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none"/></svg></a>
+          <a href="#" aria-label="TikTok"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16 3c.3 2.1 1.5 3.6 3.6 3.8v2.6c-1.3.1-2.5-.3-3.6-1v5.9a5.6 5.6 0 1 1-5.6-5.6c.3 0 .6 0 .9.1v2.7a2.9 2.9 0 1 0 2 2.8V3H16Z"/></svg></a>
+        </div>
+      </div>
+      <div>
+        <h4>Khám phá</h4>
+        <ul class="footer-links">
+          <li><a href="cua-hang.html">Cửa hàng</a></li>
+          <li><a href="diem-ban.html">Điểm bán</a></li>
+          <li><a href="goi-dich-vu.html">Gói dịch vụ</a></li>
+          <li><a href="lien-he.html">Về chúng tôi</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Hỗ trợ</h4>
+        <ul class="footer-links">
+          <li><a href="lien-he.html">Liên hệ</a></li>
+          <li><a href="#">Chính sách giao hàng</a></li>
+          <li><a href="#">Chính sách đổi trả</a></li>
+          <li><a href="#">Câu hỏi thường gặp</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Liên hệ</h4>
+        <ul class="footer-links">
+          <li>📍 <span data-cfg="address">123 Đường Hoa Mai, Hà Nội</span></li>
+          <li>📞 <a href="tel:0901234567" data-cfg-tel="hotline"><span data-cfg="hotline">090 123 4567</span></a></li>
+          <li>✉️ <a href="mailto:info@daliparty.vn" data-cfg-mail="email"><span data-cfg="email">info@daliparty.vn</span></a></li>
+          <li>🕒 <span data-cfg="hours">8:00 – 21:00 mỗi ngày</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Dali Party — Công ty Sản xuất &amp; Thương mại Dali. Đã đăng ký bản quyền.</span>
+      <span>Thiết kế với 💚 cho những bữa tiệc rực rỡ</span>
+      <a href="admin.html" style="opacity:.6;color:inherit" title="Trang quản trị điểm bán">Quản trị</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ============ CART DRAWER + OVERLAY ============ -->
+<div class="overlay" id="overlay"></div>
+<aside class="cart-drawer" id="cartDrawer" aria-label="Giỏ hàng">
+  <div class="cart-drawer__head">
+    <h3>Giỏ hàng của bạn 🛒</h3>
+    <button class="icon-btn" id="cartClose" aria-label="Đóng giỏ hàng"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="cart-items" id="cartItems"></div>
+  <div class="cart-drawer__foot">
+    <div class="cart-total"><span>Tổng cộng</span><b id="cartTotal">0₫</b></div>
+    <button class="btn btn--block btn--lg" id="checkoutBtn">Thanh toán</button>
+  </div>
+</aside>
+
+<!-- back to top -->
+<button class="to-top" id="toTop" aria-label="Lên đầu trang">
+  <svg viewBox="0 0 60 86" width="34" aria-hidden="true"><path d="M30 4 C45 4 54 18 54 32 C54 50 38 62 31 64 L29 64 C22 62 6 50 6 32 C6 18 15 4 30 4Z" fill="#8cc63f"/><path d="M28 64l4 0-2 6z" fill="#6fa82e"/><path d="M24 30l6-7 6 7" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+
+<!-- Leaflet (progressive enhancement) + shared store data layer -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="assets/js/stores.js?v=14"></script>
+
+<!-- page-specific: interactive store locator driver -->
+<script>
+  (function () {
+    "use strict";
+    if (!window.DaliStores) return;
+    var D = window.DaliStores;
+    // Capture Leaflet now: Lenis (loaded later) overwrites window.L with its own class,
+    // so we must hold a stable reference rather than reading window.L on demand.
+    var LE = (window.L && window.L.version) ? window.L : null;
+
+    var listEl   = document.getElementById("storeCards");
+    var searchEl = document.getElementById("storeSearch");
+    var btnGeo   = document.getElementById("btnNearest");
+    var geoMsg   = document.getElementById("geoMsg");
+    var panel    = document.getElementById("mapPanel");
+    var fallback = document.getElementById("mapFallback");
+
+    var stores = D.getStores();          // current dataset (may be sorted by distance)
+    var userPos = null;                  // {lat,lng} once geolocated
+    var map = null, markers = {}, userMarker = null, hasLeaflet = !!LE;
+
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+
+    /* ---------- store cards ---------- */
+    function render(filter) {
+      var q = (filter || "").trim().toLowerCase();
+      listEl.innerHTML = "";
+      var shown = stores.filter(function (s) {
+        if (!q) return true;
+        return ((s.name || "") + " " + (s.address || "") + " " + (s.city || ""))
+          .toLowerCase().indexOf(q) !== -1;
+      });
+
+      if (!shown.length) {
+        var p = document.createElement("p");
+        p.className = "store-empty";
+        p.textContent = "Không tìm thấy điểm bán phù hợp. Thử từ khoá khác nhé.";
+        listEl.appendChild(p);
+        return;
+      }
+
+      shown.forEach(function (s, i) {
+        var card = document.createElement("article");
+        card.className = "store-card" + (i === 0 ? " active" : "");
+        card.setAttribute("aria-current", i === 0 ? "true" : "false");
+        card.dataset.id = s.id;
+
+        var dist = (typeof s.distanceKm === "number" && isFinite(s.distanceKm))
+          ? '<span class="store-dist">📍 Cách bạn ~' + esc(D.fmtDistance(s.distanceKm)) + "</span>" : "";
+        var tag = s.tag ? '<span class="store-tag">' + esc(s.tag) + "</span>" : "";
+        var addr = esc(s.address) + (s.city ? ", " + esc(s.city) : "");
+
+        card.innerHTML =
+          "<h4>" + esc(s.name) + "</h4>" + tag +
+          "<p>" + addr + "</p>" +
+          '<span class="hours">🕒 ' + esc(s.hours) + "</span>" +
+          dist +
+          '<div class="store-actions">' +
+            '<button class="btn btn--soft" type="button" data-act="show" ' +
+              'aria-label="Xem ' + esc(s.name) + ' trên bản đồ">Xem trên bản đồ</button>' +
+          "</div>";
+
+        card.querySelector('[data-act="show"]').addEventListener("click", function (e) {
+          e.stopPropagation();
+          focusStore(s.id);
+        });
+        card.addEventListener("click", function () { focusStore(s.id); });
+        listEl.appendChild(card);
+      });
+    }
+
+    function setActiveCard(id) {
+      var cards = listEl.querySelectorAll(".store-card");
+      cards.forEach(function (c) {
+        var on = c.dataset.id === id;
+        c.classList.toggle("active", on);
+        c.setAttribute("aria-current", on ? "true" : "false");
+        if (on) c.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    }
+
+    /* ---------- map (Leaflet progressive enhancement) ---------- */
+    function dirLink(s) {
+      return "https://www.google.com/maps/dir/?api=1&destination=" + s.lat + "," + s.lng;
+    }
+
+    function initMap() {
+      if (!hasLeaflet || map) return;
+      var mapDiv = document.createElement("div");
+      mapDiv.id = "storeMap";
+      panel.insertBefore(mapDiv, fallback);
+      if (fallback) fallback.style.display = "none";
+
+      map = LE.map(mapDiv, { scrollWheelZoom: false }).setView([16.5, 106.5], 5);
+      LE.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap", maxZoom: 19,
+      }).addTo(map);
+      if (window.DaliStores && DaliStores.addVNIslands) DaliStores.addVNIslands(map, LE);  /* Hoàng Sa & Trường Sa của Việt Nam */
+      buildMarkers();
+    }
+
+    function buildMarkers() {
+      if (!map) return;
+      Object.keys(markers).forEach(function (k) { map.removeLayer(markers[k]); });
+      markers = {};
+      var pts = [];
+      stores.forEach(function (s) {
+        if (typeof s.lat !== "number" || typeof s.lng !== "number") return;
+        var m = LE.marker([s.lat, s.lng]).addTo(map);
+        m.bindPopup(
+          "<b>" + esc(s.name) + "</b><br>" + esc(s.address) +
+          (s.city ? ", " + esc(s.city) : "") +
+          '<br>🕒 ' + esc(s.hours) +
+          '<br><a class="popup-dir" target="_blank" rel="noopener" href="' + dirLink(s) + '">🧭 Chỉ đường</a>'
+        );
+        markers[s.id] = m;
+        pts.push([s.lat, s.lng]);
+      });
+      if (pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 13 });
+    }
+
+    function focusStore(id) {
+      setActiveCard(id);
+      var s = stores.filter(function (x) { return x.id === id; })[0];
+      if (hasLeaflet && map && s && markers[id]) {
+        map.setView([s.lat, s.lng], 15, { animate: true });
+        markers[id].openPopup();
+        panel.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+
+    /* ---------- nearest-store geolocation ---------- */
+    function showMsg(text, isError) {
+      geoMsg.textContent = text;
+      geoMsg.classList.toggle("is-error", !!isError);
+      geoMsg.hidden = false;
+    }
+
+    function onLocated(lat, lng) {
+      userPos = { lat: lat, lng: lng };
+      stores = D.withDistance(lat, lng);          // sorted nearest-first + .distanceKm
+      render(searchEl.value);
+      var nearest = stores[0];
+      showMsg("✅ Gần bạn nhất: " + nearest.name + " (~" + D.fmtDistance(nearest.distanceKm) + ").", false);
+
+      if (hasLeaflet && map) {
+        buildMarkers();
+        if (userMarker) map.removeLayer(userMarker);
+        userMarker = LE.circleMarker([lat, lng], {
+          radius: 9, color: "#416900", weight: 3, fillColor: "#8cc63f", fillOpacity: .9,
+        }).addTo(map).bindPopup("📍 Vị trí của bạn");
+        var bounds = [[lat, lng]];
+        if (nearest && typeof nearest.lat === "number") bounds.push([nearest.lat, nearest.lng]);
+        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 14 });
+        if (nearest && markers[nearest.id]) markers[nearest.id].openPopup();
+      }
+      if (nearest) setActiveCard(nearest.id);
+    }
+
+    function findNearest() {
+      if (!navigator.geolocation) {
+        showMsg("Trình duyệt của bạn không hỗ trợ định vị. Vui lòng chọn điểm bán thủ công.", true);
+        return;
+      }
+      showMsg("⏳ Đang xác định vị trí của bạn…", false);
+      btnGeo.disabled = true;
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          btnGeo.disabled = false;
+          onLocated(pos.coords.latitude, pos.coords.longitude);
+        },
+        function (err) {
+          btnGeo.disabled = false;
+          var msg = "Không lấy được vị trí của bạn. Vui lòng chọn điểm bán thủ công.";
+          if (err.code === err.PERMISSION_DENIED)
+            msg = "Bạn đã từ chối quyền truy cập vị trí. Hãy cho phép trong trình duyệt rồi thử lại.";
+          else if (err.code === err.TIMEOUT)
+            msg = "Hết thời gian xác định vị trí. Vui lòng thử lại.";
+          else if (err.code === err.POSITION_UNAVAILABLE)
+            msg = "Không xác định được vị trí hiện tại. Vui lòng thử lại sau.";
+          showMsg(msg, true);
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+
+    /* ---------- wire up ---------- */
+    if (searchEl) searchEl.addEventListener("input", function () { render(searchEl.value); });
+    if (btnGeo) btnGeo.addEventListener("click", findNearest);
+
+    // expose a hook so the success path can be simulated for testing
+    window.__daliLocateAt = onLocated;
+
+    render("");
+    initMap();
+  })();
+</script>
+
+<script src="assets/js/shop-data.js?v=1"></script>
+<script src="assets/js/main.js?v=15"></script>
+</body>
+</html>

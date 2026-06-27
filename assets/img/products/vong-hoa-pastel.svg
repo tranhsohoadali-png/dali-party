@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <radialGradient id="bgvh" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#f4fbff"/><stop offset="1" stop-color="#eaf4ff"/></radialGradient>
+    <radialGradient id="v1" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#ffd0e6"/><stop offset="1" stop-color="#ff9ec9"/></radialGradient>
+    <radialGradient id="v2" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#d8e6ff"/><stop offset="1" stop-color="#9fc2ff"/></radialGradient>
+    <radialGradient id="v3" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#e7d6ff"/><stop offset="1" stop-color="#c2a4ff"/></radialGradient>
+    <radialGradient id="v4" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#d3f6e6"/><stop offset="1" stop-color="#94e3c4"/></radialGradient>
+    <radialGradient id="v5" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#fff0c4"/><stop offset="1" stop-color="#ffdd80"/></radialGradient>
+  </defs>
+  <rect width="600" height="600" rx="40" fill="url(#bgvh)"/>
+  <!-- arch frame -->
+  <path d="M120 470 C120 220 480 220 480 470" stroke="#e7eef7" stroke-width="20" fill="none" stroke-linecap="round"/>
+  <!-- garland balloons along arch -->
+  <g>
+    <circle cx="135" cy="430" r="34" fill="url(#v1)"/>
+    <circle cx="150" cy="350" r="30" fill="url(#v2)"/>
+    <circle cx="180" cy="285" r="34" fill="url(#v3)"/>
+    <circle cx="232" cy="245" r="32" fill="url(#v4)"/>
+    <circle cx="300" cy="232" r="36" fill="url(#v5)"/>
+    <circle cx="368" cy="245" r="32" fill="url(#v1)"/>
+    <circle cx="420" cy="285" r="34" fill="url(#v2)"/>
+    <circle cx="450" cy="350" r="30" fill="url(#v3)"/>
+    <circle cx="465" cy="430" r="34" fill="url(#v4)"/>
+    <!-- inner fillers -->
+    <circle cx="205" cy="335" r="20" fill="url(#v5)"/>
+    <circle cx="265" cy="300" r="22" fill="url(#v1)"/>
+    <circle cx="335" cy="300" r="22" fill="url(#v2)"/>
+    <circle cx="395" cy="335" r="20" fill="url(#v3)"/>
+    <circle cx="300" cy="300" r="20" fill="url(#v4)"/>
+  </g>
+  <g fill="#fff" opacity=".45">
+    <circle cx="290" cy="222" r="10"/><circle cx="124" cy="420" r="9"/><circle cx="170" cy="276" r="9"/><circle cx="410" cy="276" r="9"/>
+  </g>
+  <!-- greenery accents -->
+  <g fill="#9ad14a" opacity=".8">
+    <path d="M250 250q-14-10-26-4 14 10 26 4z"/><path d="M360 252q14-10 26-4-14 10-26 4z"/>
+  </g>
+  <ellipse cx="300" cy="525" rx="150" ry="16" fill="#000" opacity=".05"/>
+</svg>

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <radialGradient id="bgst" cx="50%" cy="30%" r="80%"><stop offset="0" stop-color="#eef6ff"/><stop offset="1" stop-color="#dcecff"/></radialGradient>
+    <radialGradient id="s1" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#bfe87f"/><stop offset="1" stop-color="#7cbf2e"/></radialGradient>
+    <radialGradient id="s2" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#8fdcff"/><stop offset="1" stop-color="#33b3ee"/></radialGradient>
+    <radialGradient id="s3" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#ffb3da"/><stop offset="1" stop-color="#ff77be"/></radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1b0"/><stop offset="1" stop-color="#f0b429"/></linearGradient>
+    <linearGradient id="silver" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c4d2dd"/></linearGradient>
+  </defs>
+  <rect width="600" height="600" rx="40" fill="url(#bgst)"/>
+  <!-- ceiling line -->
+  <rect x="40" y="60" width="520" height="10" rx="5" fill="#cfe0f0"/>
+  <!-- ribbons -->
+  <g stroke="#cdb56a" stroke-width="2" fill="none" stroke-linecap="round" opacity=".8">
+    <path d="M150 70 C160 180 150 260 150 320"/><path d="M250 70 C240 200 250 300 250 360"/>
+    <path d="M350 70 C360 200 350 300 350 360"/><path d="M450 70 C440 180 450 260 450 320"/>
+    <path d="M300 70 C300 220 300 320 300 400"/>
+  </g>
+  <!-- round balloons -->
+  <circle cx="150" cy="360" r="48" fill="url(#s1)"/>
+  <circle cx="450" cy="360" r="48" fill="url(#s2)"/>
+  <circle cx="225" cy="420" r="42" fill="url(#s3)"/>
+  <circle cx="375" cy="420" r="42" fill="url(#s1)"/>
+  <!-- star foils -->
+  <path d="M300 340l24 50 55 6-40 38 10 55-49-27-49 27 10-55-40-38 55-6z" fill="url(#gold)" stroke="#e0a82e" stroke-width="2"/>
+  <path d="M250 300l16 33 36 4-27 25 7 36-32-18-32 18 7-36-27-25 36-4z" fill="url(#silver)" stroke="#b9c6d2" stroke-width="1.5"/>
+  <path d="M390 300l16 33 36 4-27 25 7 36-32-18-32 18 7-36-27-25 36-4z" fill="url(#silver)" stroke="#b9c6d2" stroke-width="1.5"/>
+  <g fill="#fff" opacity=".5"><circle cx="136" cy="344" r="12"/><circle cx="436" cy="344" r="12"/><circle cx="213" cy="406" r="10"/></g>
+  <g fill="#ffd24c"><path d="M120 150l5 14 14 5-14 5-5 14-5-14-14-5 14-5z"/><path d="M480 160l5 14 14 5-14 5-5 14-5-14-14-5 14-5z"/></g>
+</svg>

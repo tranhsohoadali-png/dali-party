@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gói dịch vụ trang trí — Dali Party</title>
+<meta name="description" content="Đặt lịch dịch vụ trang trí tận nơi cùng Dali Party — gói sinh nhật, tiệc cưới, sự kiện doanh nghiệp. Chọn ngày, điền thông tin và để chúng tôi lo phần còn lại.">
+<link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/styles.css?v=13">
+<style>[data-reveal],[data-stagger]>*{opacity:1;transform:none}html{scroll-behavior:auto}.balloon-layer{display:none}</style>
+<style>
+  /* ---- Page-specific layout for the booking section ---- */
+  .booking-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: clamp(28px, 4vw, 52px); align-items: start; }
+  @media (max-width: 900px) { .booking-grid { grid-template-columns: 1fr; } .pkg-list { max-width: 520px; } }
+
+  /* ---- Mini month calendar ---- */
+  .cal { margin-bottom: 26px; }
+  .cal__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .cal__title { font-weight: 800; color: var(--ink); font-size: 1.05rem; text-transform: capitalize; }
+  .cal__nav { display: inline-flex; gap: 8px; }
+  .cal__nav button {
+    width: 40px; height: 40px; border-radius: 12px; background: var(--green-50); color: var(--green-700);
+    font-weight: 800; font-size: 1.1rem; display: grid; place-items: center; transition: background .2s, transform .2s var(--ease-back);
+  }
+  .cal__nav button:hover { background: var(--green-200); transform: translateY(-2px); }
+  .cal__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .cal__dow { text-align: center; font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 4px 0; }
+  .cal__day {
+    aspect-ratio: 1/1; border-radius: 12px; display: grid; place-items: center;
+    font-weight: 700; color: var(--ink-2); background: var(--bg-soft);
+    transition: background .18s, color .18s, transform .18s var(--ease-back);
+  }
+  .cal__day:hover:not(.is-empty):not(.is-past) { background: var(--green-100); color: var(--green-700); transform: translateY(-2px); }
+  .cal__day.is-empty { background: transparent; cursor: default; }
+  .cal__day.is-past { color: var(--green-300); background: transparent; cursor: not-allowed; }
+  .cal__day.is-today { box-shadow: inset 0 0 0 2px var(--green-300); }
+  .cal__day.is-sel { background: var(--green-700); color: #fff; box-shadow: var(--shadow-green); }
+  .cal__picked { margin-top: 14px; font-size: .9rem; color: var(--ink-2); font-weight: 600; }
+  .cal__picked b { color: var(--green-700); }
+
+  /* ---- Service package cards (right column) ---- */
+  .pkg-list { display: flex; flex-direction: column; gap: 18px; }
+  .pkg-card {
+    display: grid; grid-template-columns: 86px 1fr; gap: 16px; align-items: center;
+    background: #fff; border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 16px;
+    transition: transform .3s var(--ease), box-shadow .3s, border-color .3s;
+  }
+  .pkg-card:hover { transform: translateY(-5px); box-shadow: var(--shadow); border-color: var(--green-200); }
+  .pkg-card__media {
+    width: 86px; height: 86px; border-radius: var(--radius); overflow: hidden; flex-shrink: 0;
+    background: linear-gradient(160deg, var(--green-50), #fff); border: 1px solid var(--line);
+  }
+  .pkg-card__media img { width: 100%; height: 100%; object-fit: contain; padding: 8%; }
+  .pkg-card__name { font-size: 1.04rem; font-weight: 800; color: var(--ink); margin-bottom: 4px; }
+  .pkg-card__desc { font-size: .86rem; color: var(--muted); margin-bottom: 10px; }
+  .pkg-card__foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .pkg-card__price { font-size: 1.12rem; font-weight: 800; color: var(--green-700); }
+  .pkg-card .btn { padding: 10px 18px; font-size: .9rem; }
+  @media (max-width: 420px) { .pkg-card { grid-template-columns: 1fr; text-align: center; } .pkg-card__media { margin: 0 auto; } }
+  @media (max-width: 400px) { .form-card { padding: 20px; } }
+  @media (max-width: 380px) { .cal__grid { gap: 4px; } .cal__day { font-size: .85rem; min-height: 40px; } }
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Bỏ qua tới nội dung</a>
+
+<!-- ============ HEADER ============ -->
+<header class="site-header">
+  <div class="container nav">
+    <a href="index.html" class="brand" aria-label="Dali Party trang chủ">
+      <svg class="brand-mark" viewBox="0 0 60 86" aria-hidden="true">
+        <defs><radialGradient id="bm" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#b2dd6b"/><stop offset="1" stop-color="#6fa82e"/></radialGradient></defs>
+        <path d="M30 4 C45 4 54 18 54 32 C54 50 38 62 31 64 L29 64 C22 62 6 50 6 32 C6 18 15 4 30 4Z" fill="url(#bm)"/>
+        <path d="M28 64l4 0-2 6z" fill="#6fa82e"/>
+        <ellipse cx="22" cy="24" rx="6" ry="9" fill="#fff" opacity=".5"/>
+      </svg>
+      <span class="brand-name"><b>Dali Party</b><span>Bóng bay &amp; Trang trí</span></span>
+    </a>
+
+    <nav class="nav-links" aria-label="Điều hướng chính">
+      <a href="index.html">Trang chủ</a>
+      <a href="cua-hang.html">Cửa hàng</a>
+      <a href="diem-ban.html">Điểm bán</a>
+      <a href="goi-dich-vu.html" class="active">Gói dịch vụ</a>
+      <a href="lien-he.html">Liên hệ</a>
+    </nav>
+
+    <div class="nav-actions">
+      <form class="search-box" data-search role="search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+        <input type="search" placeholder="Tìm bóng bay…" aria-label="Tìm kiếm">
+      </form>
+      <button class="icon-btn" id="cartBtn" aria-label="Giỏ hàng">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/><path d="M2 3h3l2.4 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L23 7H6"/></svg>
+        <span class="cart-count" aria-live="polite">0</span>
+      </button>
+      <button class="icon-btn nav-toggle" id="navToggle" aria-label="Mở menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- mobile menu -->
+<div class="mobile-menu" id="mobileMenu">
+  <div class="mm-head">
+    <b style="color:var(--green-600);font-size:1.2rem">Dali Party</b>
+    <button class="icon-btn" id="menuClose" aria-label="Đóng menu"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <a href="index.html">Trang chủ</a>
+  <a href="cua-hang.html">Cửa hàng</a>
+  <a href="diem-ban.html">Điểm bán</a>
+  <a href="goi-dich-vu.html">Gói dịch vụ</a>
+  <a href="lien-he.html">Liên hệ</a>
+</div>
+
+<main id="main">
+<!-- ============ PAGE HERO ============ -->
+<section class="page-hero">
+  <div class="balloon-layer" data-balloons="4" aria-hidden="true"></div>
+  <div class="container">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="index.html">Trang chủ</a> <span>/</span> <span>Gói dịch vụ</span>
+    </nav>
+    <h1>Đặt lịch dịch vụ <span class="text-grad">Dali Party</span></h1>
+    <p>Chọn ngày, chọn gói trang trí và để đội ngũ Dali biến không gian của bạn thành bữa tiệc trong mơ — tận nơi, đúng giờ, đầy màu sắc.</p>
+  </div>
+</section>
+
+<!-- ============ BOOKING ============ -->
+<section class="section" id="booking">
+  <div class="container">
+    <div class="booking-grid" data-reveal>
+
+      <!-- LEFT: calendar + booking form -->
+      <div class="form-card">
+        <span class="eyebrow">Đặt lịch trang trí</span>
+        <h2 style="font-size:clamp(1.5rem,3vw,2rem);margin:14px 0 6px">Chọn ngày &amp; gửi yêu cầu</h2>
+        <p style="color:var(--muted);margin-bottom:24px">Bấm chọn ngày bạn muốn Dali tới trang trí, sau đó điền thông tin bên dưới.</p>
+
+        <!-- interactive month calendar -->
+        <div class="cal" id="cal">
+          <div class="cal__head">
+            <span class="cal__title" id="calTitle">Tháng</span>
+            <span class="cal__nav">
+              <button type="button" id="calPrev" aria-label="Tháng trước">‹</button>
+              <button type="button" id="calNext" aria-label="Tháng sau">›</button>
+            </span>
+          </div>
+          <div class="cal__grid" id="calDow">
+            <span class="cal__dow">CN</span><span class="cal__dow">T2</span><span class="cal__dow">T3</span>
+            <span class="cal__dow">T4</span><span class="cal__dow">T5</span><span class="cal__dow">T6</span><span class="cal__dow">T7</span>
+          </div>
+          <div class="cal__grid" id="calDays" role="group" aria-label="Chọn ngày trang trí"></div>
+          <div class="cal__picked" id="calPicked" aria-live="polite">Chưa chọn ngày — hãy bấm một ngày phía trên 🗓️</div>
+        </div>
+
+        <form data-demo data-capture="booking" data-success="Đã gửi yêu cầu đặt lịch! Dali Party sẽ gọi xác nhận trong 24h 🎉">
+          <input type="hidden" id="bookDate" name="bookDate" value="">
+          <div class="field">
+            <label for="evtType">Loại sự kiện</label>
+            <select id="evtType" name="evtType" required>
+              <option value="" disabled selected>— Chọn loại sự kiện —</option>
+              <option>Sinh nhật</option>
+              <option>Đám cưới</option>
+              <option>Họp mặt / Liên hoan</option>
+              <option>Tết cổ truyền</option>
+              <option>Sự kiện doanh nghiệp</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="name">Họ tên</label>
+              <input type="text" id="name" name="name" placeholder="Nguyễn Văn A" required>
+            </div>
+            <div class="field">
+              <label for="phone">Số điện thoại</label>
+              <input type="tel" id="phone" name="phone" placeholder="090 123 4567" required>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="email">Email</label>
+              <input type="email" id="email" name="email" placeholder="ban@email.com" required>
+            </div>
+            <div class="field">
+              <label for="guests">Số khách dự kiến</label>
+              <input type="number" id="guests" name="guests" min="1" placeholder="VD: 30">
+            </div>
+          </div>
+          <div class="field">
+            <label for="note">Ghi chú</label>
+            <textarea id="note" name="note" placeholder="Mô tả ý tưởng, màu sắc yêu thích, địa điểm trang trí…"></textarea>
+          </div>
+          <button type="submit" class="btn btn--block btn--lg">Đặt lịch ngay 🎈</button>
+        </form>
+      </div>
+
+      <!-- RIGHT: popular service packages -->
+      <div>
+        <span class="eyebrow">Gợi ý cho bạn</span>
+        <h2 style="font-size:clamp(1.5rem,3vw,2rem);margin:14px 0 20px">Gói dịch vụ <span class="text-grad">phổ biến</span></h2>
+        <div class="pkg-list">
+          <article class="pkg-card">
+            <div class="pkg-card__media"><img src="assets/img/products/combo-ky-lan.svg" alt="Gói sinh nhật cơ bản" loading="lazy"></div>
+            <div>
+              <h3 class="pkg-card__name">Gói sinh nhật cơ bản 🎂</h3>
+              <p class="pkg-card__desc">Bóng combo theo chủ đề, banner chúc mừng và set bàn quà xinh xắn.</p>
+              <div class="pkg-card__foot">
+                <span class="pkg-card__price">350.000₫</span>
+                <a href="#booking" class="btn">Đặt ngay</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="pkg-card">
+            <div class="pkg-card__media"><img src="assets/img/products/trang-tri-cuoi.svg" alt="Gói tiệc cưới sang trọng" loading="lazy"></div>
+            <div>
+              <h3 class="pkg-card__name">Gói tiệc cưới sang trọng 💍</h3>
+              <p class="pkg-card__desc">Cổng hoa lãng mạn, backdrop chụp ảnh và lối đi rải hoa tinh tế.</p>
+              <div class="pkg-card__foot">
+                <span class="pkg-card__price">3.600.000₫</span>
+                <a href="#booking" class="btn">Đặt ngay</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="pkg-card">
+            <div class="pkg-card__media"><img src="assets/img/products/cong-khai-truong.svg" alt="Gói sự kiện doanh nghiệp" loading="lazy"></div>
+            <div>
+              <h3 class="pkg-card__name">Gói sự kiện doanh nghiệp 🏢</h3>
+              <p class="pkg-card__desc">Backdrop in logo công ty, standee chuyên nghiệp và bóng bay sự kiện.</p>
+              <div class="pkg-card__foot">
+                <span class="pkg-card__price">4.200.000₫</span>
+                <a href="#booking" class="btn">Đặt ngay</a>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="feat" style="margin-top:18px;text-align:left">
+          <h3 style="font-size:1.05rem;margin-bottom:6px">💬 Cần gói riêng?</h3>
+          <p style="font-size:.9rem">Mọi gói đều có thể tùy chỉnh theo ngân sách và ý tưởng của bạn. Ghi chú trong form hoặc gọi <a href="tel:0901234567" style="color:var(--green-700);font-weight:700">090 123 4567</a> để được tư vấn miễn phí.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ WORKFLOW / STEPS ============ -->
+<section class="section section--tint">
+  <div class="container">
+    <div class="section-head" data-reveal>
+      <span class="eyebrow">Quy trình làm việc</span>
+      <h2>Từ ý tưởng đến <span class="text-grad">bữa tiệc rực rỡ</span></h2>
+      <p>Bốn bước đơn giản, minh bạch — bạn chỉ việc tận hưởng, phần trang trí cứ để Dali lo.</p>
+    </div>
+    <div class="steps" data-stagger>
+      <div class="step"><h3>Tư vấn</h3><p>Lắng nghe ý tưởng, dịp tổ chức và ngân sách để gợi ý phong cách phù hợp nhất.</p></div>
+      <div class="step"><h3>Chốt ý tưởng &amp; báo giá</h3><p>Gửi bản phác thảo, bảng màu và báo giá rõ ràng trước khi bạn quyết định.</p></div>
+      <div class="step"><h3>Trang trí tận nơi</h3><p>Đội ngũ Dali có mặt đúng giờ, lắp đặt tỉ mỉ và an toàn cho không gian của bạn.</p></div>
+      <div class="step"><h3>Nghiệm thu &amp; tận hưởng</h3><p>Cùng kiểm tra thành quả, chỉnh sửa nếu cần và sẵn sàng cho khoảnh khắc đáng nhớ.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WHY DALI ============ -->
+<section class="section">
+  <div class="container">
+    <div class="section-head" data-reveal>
+      <span class="eyebrow">Vì sao chọn Dali</span>
+      <h2>Yên tâm trong <span class="text-grad">từng chi tiết</span></h2>
+    </div>
+    <div class="grid-feats" data-stagger>
+      <div class="feat"><div class="feat__ico">⏱️</div><h3>Đúng giờ, đúng hẹn</h3><p>Cam kết có mặt và hoàn tất trang trí trước giờ sự kiện bắt đầu.</p></div>
+      <div class="feat"><div class="feat__ico">💰</div><h3>Báo giá minh bạch</h3><p>Không phụ phí ẩn — mọi hạng mục đều được liệt kê rõ ràng từ đầu.</p></div>
+      <div class="feat"><div class="feat__ico">🎨</div><h3>Thiết kế riêng</h3><p>Mỗi không gian là một bản phác thảo độc quyền theo đúng gu của bạn.</p></div>
+      <div class="feat"><div class="feat__ico">🛡️</div><h3>An toàn tuyệt đối</h3><p>Vật liệu &amp; khí Helium đạt chuẩn, an toàn cho trẻ nhỏ và không gian kín.</p></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 60 86" aria-hidden="true"><path d="M30 4 C45 4 54 18 54 32 C54 50 38 62 31 64 L29 64 C22 62 6 50 6 32 C6 18 15 4 30 4Z" fill="#8cc63f"/><path d="M28 64l4 0-2 6z" fill="#6fa82e"/><ellipse cx="22" cy="24" rx="6" ry="9" fill="#fff" opacity=".5"/></svg>
+          <span class="brand-name"><b>Dali Party</b><span>Bóng bay &amp; Trang trí</span></span>
+        </div>
+        <p class="footer-about">Cửa hàng bóng bay &amp; trang trí sự kiện của Công ty Sản xuất &amp; Thương mại Dali. Mang thế giới phép thuật đến mọi bữa tiệc của bạn.</p>
+        <div class="socials">
+          <a href="#" aria-label="Facebook"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.2c-1.2 0-1.6.8-1.6 1.6V12h2.7l-.4 2.9h-2.3v7A10 10 0 0 0 22 12Z"/></svg></a>
+          <a href="#" aria-label="Instagram"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none"/></svg></a>
+          <a href="#" aria-label="TikTok"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16 3c.3 2.1 1.5 3.6 3.6 3.8v2.6c-1.3.1-2.5-.3-3.6-1v5.9a5.6 5.6 0 1 1-5.6-5.6c.3 0 .6 0 .9.1v2.7a2.9 2.9 0 1 0 2 2.8V3H16Z"/></svg></a>
+        </div>
+      </div>
+      <div>
+        <h4>Khám phá</h4>
+        <ul class="footer-links">
+          <li><a href="cua-hang.html">Cửa hàng</a></li>
+          <li><a href="diem-ban.html">Điểm bán</a></li>
+          <li><a href="goi-dich-vu.html">Gói dịch vụ</a></li>
+          <li><a href="cua-hang.html">Sản phẩm bán chạy</a></li>
+          <li><a href="lien-he.html">Về chúng tôi</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Hỗ trợ</h4>
+        <ul class="footer-links">
+          <li><a href="lien-he.html">Liên hệ</a></li>
+          <li><a href="#">Chính sách giao hàng</a></li>
+          <li><a href="#">Chính sách đổi trả</a></li>
+          <li><a href="#">Câu hỏi thường gặp</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Liên hệ</h4>
+        <ul class="footer-links">
+          <li>📍 <span data-cfg="address">123 Đường Hoa Mai, Hà Nội</span></li>
+          <li>📞 <a href="tel:0901234567" data-cfg-tel="hotline"><span data-cfg="hotline">090 123 4567</span></a></li>
+          <li>✉️ <a href="mailto:info@daliparty.vn" data-cfg-mail="email"><span data-cfg="email">info@daliparty.vn</span></a></li>
+          <li>🕒 <span data-cfg="hours">8:00 – 21:00 mỗi ngày</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Dali Party — Công ty Sản xuất &amp; Thương mại Dali. Đã đăng ký bản quyền.</span>
+      <span>Thiết kế với 💚 cho những bữa tiệc rực rỡ</span>
+      <a href="admin.html" style="opacity:.6;color:inherit" title="Trang quản trị điểm bán">Quản trị</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ============ CART DRAWER + OVERLAY ============ -->
+<div class="overlay" id="overlay"></div>
+<aside class="cart-drawer" id="cartDrawer" aria-label="Giỏ hàng">
+  <div class="cart-drawer__head">
+    <h3>Giỏ hàng của bạn 🛒</h3>
+    <button class="icon-btn" id="cartClose" aria-label="Đóng giỏ hàng"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="cart-items" id="cartItems"></div>
+  <div class="cart-drawer__foot">
+    <div class="cart-total"><span>Tổng cộng</span><b id="cartTotal">0₫</b></div>
+    <button class="btn btn--block btn--lg" id="checkoutBtn">Thanh toán</button>
+  </div>
+</aside>
+
+<!-- back to top -->
+<button class="to-top" id="toTop" aria-label="Lên đầu trang">
+  <svg viewBox="0 0 60 86" width="34" aria-hidden="true"><path d="M30 4 C45 4 54 18 54 32 C54 50 38 62 31 64 L29 64 C22 62 6 50 6 32 C6 18 15 4 30 4Z" fill="#8cc63f"/><path d="M28 64l4 0-2 6z" fill="#6fa82e"/><path d="M24 30l6-7 6 7" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+
+<!-- ============ CALENDAR (page-specific) ============ -->
+<script>
+(function () {
+  "use strict";
+  var daysEl = document.getElementById("calDays");
+  var titleEl = document.getElementById("calTitle");
+  var pickedEl = document.getElementById("calPicked");
+  var hidden = document.getElementById("bookDate");
+  if (!daysEl) return;
+
+  var MONTHS = ["Tháng 1","Tháng 2","Tháng 3","Tháng 4","Tháng 5","Tháng 6","Tháng 7","Tháng 8","Tháng 9","Tháng 10","Tháng 11","Tháng 12"];
+  var now = new Date();
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var viewYear = now.getFullYear();
+  var viewMonth = now.getMonth();
+  var selected = null; // Date
+
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+  function fmt(d) { return pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear(); }
+
+  function render() {
+    titleEl.textContent = MONTHS[viewMonth] + " " + viewYear;
+    daysEl.innerHTML = "";
+    var firstDow = new Date(viewYear, viewMonth, 1).getDay(); // 0=Sun..6=Sat
+    var daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+    // leading blanks
+    for (var b = 0; b < firstDow; b++) {
+      var empty = document.createElement("span");
+      empty.className = "cal__day is-empty";
+      daysEl.appendChild(empty);
+    }
+    // day cells
+    for (var d = 1; d <= daysInMonth; d++) {
+      var cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "cal__day";
+      cell.textContent = d;
+      cell.setAttribute("aria-label", "Ngày " + d + " " + MONTHS[viewMonth] + " " + viewYear);
+      var date = new Date(viewYear, viewMonth, d);
+      if (date.getTime() === today.getTime()) cell.classList.add("is-today");
+      if (date < today) {
+        cell.classList.add("is-past");
+        cell.disabled = true;
+      } else {
+        (function (dt) {
+          cell.addEventListener("click", function () { select(dt); });
+        })(date);
+      }
+      var isSel = selected && date.getTime() === selected.getTime();
+      if (isSel) cell.classList.add("is-sel");
+      cell.setAttribute("aria-pressed", isSel ? "true" : "false");
+      daysEl.appendChild(cell);
+    }
+  }
+
+  function select(date) {
+    selected = date;
+    hidden.value = fmt(date);
+    pickedEl.innerHTML = "Đã chọn: <b>" + fmt(date) + "</b> ✨";
+    render();
+  }
+
+  document.getElementById("calPrev").addEventListener("click", function () {
+    viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } render();
+  });
+  document.getElementById("calNext").addEventListener("click", function () {
+    viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } render();
+  });
+
+  render();
+})();
+</script>
+
+<script src="assets/js/shop-data.js?v=1"></script>
+<script src="assets/js/main.js?v=15"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <radialGradient id="bgkl" cx="50%" cy="38%" r="75%"><stop offset="0" stop-color="#fff4fb"/><stop offset="1" stop-color="#f3e9ff"/></radialGradient>
+    <radialGradient id="p1" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#ffb3da"/><stop offset="1" stop-color="#ff77be"/></radialGradient>
+    <radialGradient id="p2" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#dcc4ff"/><stop offset="1" stop-color="#b491ff"/></radialGradient>
+    <radialGradient id="p3" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#a9f0d8"/><stop offset="1" stop-color="#5fd6bb"/></radialGradient>
+    <radialGradient id="p4" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#ffe9a3"/><stop offset="1" stop-color="#ffd24c"/></radialGradient>
+    <linearGradient id="horn" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe9a3"/><stop offset="1" stop-color="#f0b429"/></linearGradient>
+  </defs>
+  <rect width="600" height="600" rx="40" fill="url(#bgkl)"/>
+  <!-- pennant banner -->
+  <path d="M90 120 C250 90 350 90 510 120" stroke="#e6b8ff" stroke-width="3" fill="none"/>
+  <g>
+    <path d="M150 118l34 4-22 26z" fill="#ff77be"/><path d="M214 124l34 2-26 24z" fill="#ffd24c"/>
+    <path d="M278 126l34 0-30 24z" fill="#5fd6bb"/><path d="M342 124l34-2-34 24z" fill="#b491ff"/>
+    <path d="M406 120l34-4-36 26z" fill="#ff9bd0"/>
+  </g>
+  <!-- strings -->
+  <g stroke="#d9c9ee" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M200 320 C220 400 290 430 300 470"/><path d="M300 300 C300 390 300 430 300 470"/>
+    <path d="M400 320 C380 400 312 430 300 470"/>
+  </g>
+  <!-- balloons -->
+  <ellipse cx="200" cy="262" rx="62" ry="74" fill="url(#p1)"/><path d="M198 334l6 0-3 12z" fill="#ff77be"/>
+  <ellipse cx="400" cy="262" rx="62" ry="74" fill="url(#p3)"/><path d="M398 334l6 0-3 12z" fill="#5fd6bb"/>
+  <ellipse cx="300" cy="232" rx="70" ry="82" fill="url(#p2)"/><path d="M298 312l6 0-3 12z" fill="#b491ff"/>
+  <ellipse cx="250" cy="300" rx="40" ry="48" fill="url(#p4)"/>
+  <!-- unicorn horn + ears on center balloon -->
+  <path d="M300 150 l16 -64 16 64 z" fill="url(#horn)"/>
+  <path d="M300 150 l8 -32 m -2 16 l 14 -10 m -6 26 l 14 -10" stroke="#fff" stroke-width="2" opacity=".6"/>
+  <path d="M262 174 q-8 -30 6 -40 q10 18 4 36 z" fill="#ffb3da"/>
+  <path d="M338 174 q8 -30 -6 -40 q-10 18 -4 36 z" fill="#ffb3da"/>
+  <!-- eyes -->
+  <path d="M276 250 q8 10 16 0" stroke="#7a4b86" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M308 250 q8 10 16 0" stroke="#7a4b86" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <circle cx="270" cy="272" r="9" fill="#ffc2e0" opacity=".8"/><circle cx="330" cy="272" r="9" fill="#ffc2e0" opacity=".8"/>
+  <!-- highlights -->
+  <g fill="#fff" opacity=".5"><ellipse cx="182" cy="238" rx="15" ry="21"/><ellipse cx="382" cy="238" rx="15" ry="21"/><ellipse cx="282" cy="206" rx="17" ry="24"/></g>
+  <ellipse cx="300" cy="520" rx="120" ry="16" fill="#000" opacity=".05"/>
+  <!-- sparkles -->
+  <g fill="#ffd24c"><path d="M470 200l5 14 14 5-14 5-5 14-5-14-14-5 14-5z"/><path d="M120 360l4 11 11 4-11 4-4 11-4-11-11-4 11-4z"/></g>
+</svg>

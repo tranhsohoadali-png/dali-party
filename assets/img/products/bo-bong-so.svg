@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <radialGradient id="bgbs" cx="50%" cy="38%" r="75%"><stop offset="0" stop-color="#fbf7ff"/><stop offset="1" stop-color="#efe6ff"/></radialGradient>
+    <linearGradient id="numg" x1="0" y1="0" x2="0.5" y2="1"><stop offset="0" stop-color="#fff1b0"/><stop offset="1" stop-color="#f0b429"/></linearGradient>
+    <radialGradient id="n1" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#ffb3da"/><stop offset="1" stop-color="#ff77be"/></radialGradient>
+    <radialGradient id="n2" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#d4baff"/><stop offset="1" stop-color="#a878ff"/></radialGradient>
+    <radialGradient id="n3" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#8fdcff"/><stop offset="1" stop-color="#33b3ee"/></radialGradient>
+  </defs>
+  <rect width="600" height="600" rx="40" fill="url(#bgbs)"/>
+  <!-- big foil number 1 -->
+  <g transform="translate(238 150)">
+    <path d="M40 0 C70 0 88 14 92 16 L92 250 L40 250 L40 70 L4 84 L-6 44 L40 24 Z" fill="url(#numg)" stroke="#e0a82e" stroke-width="3" transform="scale(1.05)"/>
+  </g>
+  <!-- cluster balloons -->
+  <g stroke="#d9c9ee" stroke-width="2" fill="none" stroke-linecap="round">
+    <path d="M180 360 C190 420 250 440 300 470"/><path d="M420 360 C410 420 350 440 300 470"/>
+  </g>
+  <ellipse cx="170" cy="320" rx="46" ry="55" fill="url(#n1)"/><path d="M168 374l5 0-3 10z" fill="#ff77be"/>
+  <ellipse cx="430" cy="320" rx="46" ry="55" fill="url(#n3)"/><path d="M428 374l5 0-3 10z" fill="#33b3ee"/>
+  <ellipse cx="230" cy="380" rx="38" ry="46" fill="url(#n2)"/>
+  <ellipse cx="375" cy="380" rx="38" ry="46" fill="url(#n1)"/>
+  <g fill="#fff" opacity=".5"><ellipse cx="156" cy="304" rx="12" ry="16"/><ellipse cx="416" cy="304" rx="12" ry="16"/></g>
+  <ellipse cx="300" cy="525" rx="150" ry="15" fill="#000" opacity=".05"/>
+  <g fill="#ff77be"><path d="M120 200l4 11 11 4-11 4-4 11-4-11-11-4 11-4z"/><path d="M470 210l4 11 11 4-11 4-4 11-4-11-11-4 11-4z"/></g>
+</svg>

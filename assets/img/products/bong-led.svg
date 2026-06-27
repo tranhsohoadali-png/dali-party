@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <radialGradient id="bgled" cx="50%" cy="35%" r="80%"><stop offset="0" stop-color="#2b2350"/><stop offset="1" stop-color="#171232"/></radialGradient>
+    <radialGradient id="l1" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#fff6cf"/><stop offset="1" stop-color="#ffd24c" stop-opacity=".5"/></radialGradient>
+    <radialGradient id="l2" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#cdfff2"/><stop offset="1" stop-color="#5fd6bb" stop-opacity=".5"/></radialGradient>
+    <radialGradient id="l3" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#ffd9ef"/><stop offset="1" stop-color="#ff77be" stop-opacity=".5"/></radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffe9a3" stop-opacity=".8"/><stop offset="1" stop-color="#ffe9a3" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="600" height="600" rx="40" fill="url(#bgled)"/>
+  <!-- glows -->
+  <circle cx="220" cy="250" r="120" fill="url(#glow)"/><circle cx="390" cy="300" r="120" fill="url(#glow)" opacity=".7"/>
+  <!-- strings -->
+  <g stroke="#5a5288" stroke-width="2" fill="none" stroke-linecap="round">
+    <path d="M210 320 C220 400 290 430 300 480"/><path d="M300 300 C300 400 300 440 300 480"/><path d="M390 330 C380 410 312 440 300 480"/>
+  </g>
+  <ellipse cx="210" cy="262" rx="56" ry="66" fill="url(#l2)" stroke="#9affe4" stroke-width="1.5" opacity=".95"/>
+  <ellipse cx="390" cy="272" rx="56" ry="66" fill="url(#l3)" stroke="#ffb3e0" stroke-width="1.5" opacity=".95"/>
+  <ellipse cx="300" cy="232" rx="64" ry="74" fill="url(#l1)" stroke="#fff0b8" stroke-width="1.5" opacity=".98"/>
+  <!-- led sparkles inside -->
+  <g fill="#fff"><circle cx="300" cy="232" r="4"/><circle cx="282" cy="210" r="3"/><circle cx="322" cy="252" r="3"/><circle cx="210" cy="262" r="3"/><circle cx="390" cy="272" r="3"/><circle cx="226" cy="244" r="2.5"/><circle cx="372" cy="252" r="2.5"/></g>
+  <g fill="#fff" opacity=".6"><ellipse cx="192" cy="244" rx="11" ry="15"/><ellipse cx="372" cy="254" rx="11" ry="15"/><ellipse cx="282" cy="212" rx="13" ry="17"/></g>
+  <g fill="#fff7d6"><path d="M120 160l4 12 12 4-12 4-4 12-4-12-12-4 12-4z"/><path d="M470 180l5 13 13 5-13 5-5 13-5-13-13-5 13-5z"/><circle cx="150" cy="380" r="3"/><circle cx="450" cy="400" r="3"/></g>
+</svg>

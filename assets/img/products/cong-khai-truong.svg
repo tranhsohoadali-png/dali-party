@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <radialGradient id="bgkt" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#fff6f4"/><stop offset="1" stop-color="#ffe9e4"/></radialGradient>
+    <radialGradient id="k1" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#ff8c7d"/><stop offset="1" stop-color="#ff4d4d"/></radialGradient>
+    <radialGradient id="k2" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#ffe07a"/><stop offset="1" stop-color="#ffc21f"/></radialGradient>
+    <radialGradient id="k3" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#bfe87f"/><stop offset="1" stop-color="#7cbf2e"/></radialGradient>
+    <radialGradient id="k4" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#8fdcff"/><stop offset="1" stop-color="#33b3ee"/></radialGradient>
+  </defs>
+  <rect width="600" height="600" rx="40" fill="url(#bgkt)"/>
+  <!-- columns -->
+  <g>
+    <g id="colL"><circle cx="135" cy="470" r="32" fill="url(#k1)"/><circle cx="135" cy="408" r="30" fill="url(#k2)"/><circle cx="135" cy="350" r="30" fill="url(#k3)"/><circle cx="135" cy="294" r="28" fill="url(#k4)"/><circle cx="135" cy="242" r="28" fill="url(#k1)"/></g>
+    <use href="#colL" x="330"/>
+  </g>
+  <!-- arch top -->
+  <g>
+    <circle cx="175" cy="200" r="28" fill="url(#k2)"/><circle cx="225" cy="170" r="28" fill="url(#k3)"/>
+    <circle cx="280" cy="152" r="30" fill="url(#k1)"/><circle cx="335" cy="158" r="28" fill="url(#k4)"/>
+    <circle cx="388" cy="178" r="28" fill="url(#k2)"/><circle cx="430" cy="210" r="26" fill="url(#k1)"/>
+  </g>
+  <!-- banner -->
+  <rect x="190" y="250" width="220" height="56" rx="10" fill="#fff" stroke="#ffd24c" stroke-width="3"/>
+  <text x="300" y="286" text-anchor="middle" font-family="Be Vietnam Pro, sans-serif" font-size="26" font-weight="800" fill="#ff4d4d">KHAI TRƯƠNG</text>
+  <g fill="#fff" opacity=".45"><circle cx="124" cy="232" r="9"/><circle cx="454" cy="232" r="9"/><circle cx="270" cy="142" r="10"/></g>
+  <ellipse cx="300" cy="535" rx="160" ry="14" fill="#000" opacity=".05"/>
+</svg>

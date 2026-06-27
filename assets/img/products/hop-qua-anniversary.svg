@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <radialGradient id="bgan" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#fffaf2"/><stop offset="1" stop-color="#fdeede"/></radialGradient>
+    <radialGradient id="a1" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#ffb3a8"/><stop offset="1" stop-color="#ff6f5c"/></radialGradient>
+    <radialGradient id="a2" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#ffe07a"/><stop offset="1" stop-color="#ffc21f"/></radialGradient>
+    <radialGradient id="a3" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#d4baff"/><stop offset="1" stop-color="#a878ff"/></radialGradient>
+    <linearGradient id="box" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4fc3f7"/><stop offset="1" stop-color="#2a93c9"/></linearGradient>
+    <linearGradient id="lid" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fd0fb"/><stop offset="1" stop-color="#3aa9dd"/></linearGradient>
+  </defs>
+  <rect width="600" height="600" rx="40" fill="url(#bgan)"/>
+  <!-- strings -->
+  <g stroke="#e3cfc0" stroke-width="2.5" fill="none" stroke-linecap="round">
+    <path d="M210 250 C220 320 290 350 300 400"/><path d="M300 220 C300 310 300 350 300 400"/><path d="M392 250 C380 320 312 350 300 400"/>
+  </g>
+  <!-- balloons rising from box -->
+  <ellipse cx="210" cy="196" rx="52" ry="62" fill="url(#a1)"/><path d="M208 256l5 0-3 11z" fill="#ff6f5c"/>
+  <ellipse cx="392" cy="196" rx="52" ry="62" fill="url(#a3)"/><path d="M390 256l5 0-3 11z" fill="#a878ff"/>
+  <ellipse cx="300" cy="168" rx="58" ry="68" fill="url(#a2)"/><path d="M298 234l6 0-3 11z" fill="#ffc21f"/>
+  <g fill="#fff" opacity=".5"><ellipse cx="194" cy="176" rx="13" ry="18"/><ellipse cx="376" cy="176" rx="13" ry="18"/><ellipse cx="284" cy="146" rx="15" ry="20"/></g>
+  <!-- gift box -->
+  <rect x="200" y="400" width="200" height="120" rx="10" fill="url(#box)"/>
+  <rect x="190" y="372" width="220" height="40" rx="10" fill="url(#lid)"/>
+  <rect x="285" y="372" width="30" height="148" fill="#ffd24c"/>
+  <rect x="190" y="386" width="220" height="12" fill="#ffd24c"/>
+  <path d="M300 372c-22-26-58-14-58 6 0 14 34 10 58-6 24 16 58 20 58 6 0-20-36-32-58-6z" fill="#ffd24c"/>
+  <circle cx="300" cy="378" r="10" fill="#ffb300"/>
+  <!-- ribbon banner -->
+  <rect x="222" y="450" width="156" height="34" rx="6" fill="#fff" opacity=".92"/>
+  <text x="300" y="473" text-anchor="middle" font-family="Be Vietnam Pro, sans-serif" font-size="17" font-weight="800" fill="#2a93c9">ANNIVERSARY</text>
+  <ellipse cx="300" cy="540" rx="130" ry="14" fill="#000" opacity=".05"/>
+  <g fill="#ffc21f"><path d="M150 220l4 11 11 4-11 4-4 11-4-11-11-4 11-4z"/><path d="M450 240l4 11 11 4-11 4-4 11-4-11-11-4 11-4z"/></g>
+</svg>
