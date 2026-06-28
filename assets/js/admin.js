@@ -91,11 +91,12 @@
     currentView = name;
     document.querySelectorAll(".view").forEach(function (v) { v.hidden = v.getAttribute("data-view") !== name; });
     document.querySelectorAll(".tab").forEach(function (t) { t.classList.toggle("active", t.getAttribute("data-view") === name); });
-    var TITLES = { overview: "Tổng quan", products: "Sản phẩm", orders: "Đơn hàng", customers: "Khách hàng", bookings: "Đặt dịch vụ", messages: "Tin nhắn", stores: "Điểm bán", settings: "Cài đặt" };
+    var TITLES = { overview: "Tổng quan", products: "Sản phẩm", orders: "Đơn hàng", banners: "Yêu cầu banner", customers: "Khách hàng", bookings: "Đặt dịch vụ", messages: "Tin nhắn", stores: "Điểm bán", settings: "Cài đặt" };
     var pt = $("pageTitle"); if (pt) pt.textContent = TITLES[name] || "Quản trị";
     if (name === "overview") renderOverview();
     else if (name === "products") renderProducts();
     else if (name === "orders") renderOrders();
+    else if (name === "banners") renderBanners();
     else if (name === "customers") renderCustomers();
     else if (name === "bookings") renderBookings();
     else if (name === "messages") renderMessages();
@@ -151,6 +152,19 @@
       orders.forEach(function (o) { phones[(o.customer && o.customer.phone) || "—"] = 1; });
       $("tabnCustomers").textContent = Object.keys(phones).length;
     }
+    refreshBannerCount();
+  }
+
+  /* Banner tab badge: fetched from the backend (may be DOWN). On any error, leave 0. */
+  function refreshBannerCount() {
+    var badge = $("tabnBanners"); if (!badge) return;
+    fetch("/api/admin/banner/list")
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (data) {
+        var n = data && (typeof data.count === "number" ? data.count : (Array.isArray(data.items) ? data.items.length : 0));
+        badge.textContent = n || 0;
+      })
+      .catch(function () { badge.textContent = "0"; });
   }
 
   /* ============================================================
@@ -702,6 +716,79 @@
   }
 
   /* ============================================================
+     BANNERS (Yêu cầu banner — backend API, may be DOWN)
+     GET  /api/admin/banner/list  -> {items:[…], count:N}  (newest first)
+     POST /api/admin/banner/{id}/status  (form "status")
+     ============================================================ */
+  var BANNER_STATUSES = ["Mới", "Đang làm", "Hoàn tất", "Đã huỷ"];
+  function bannerStatusClass(s) {
+    return s === "Hoàn tất" ? "st-done" : s === "Đang làm" ? "st-ok" : s === "Đã huỷ" ? "st-cancel" : "st-new";
+  }
+  function renderBanners() {
+    var host = $("bannerList"); if (!host) return;
+    host.innerHTML = '<p class="bn-empty">Đang tải yêu cầu banner…</p>';
+    fetch("/api/admin/banner/list")
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (data) {
+        var items = (data && Array.isArray(data.items)) ? data.items : [];
+        var badge = $("tabnBanners"); if (badge) badge.textContent = (data && typeof data.count === "number" ? data.count : items.length) || 0;
+        $("bannerCount").textContent = items.length + " yêu cầu";
+        if (!items.length) { host.innerHTML = '<p class="bn-empty">Chưa có yêu cầu nào.</p>'; return; }
+        host.innerHTML = '<div class="bn-grid">' + items.map(bannerCard).join("") + "</div>";
+      })
+      .catch(function () {
+        $("bannerCount").textContent = "0 yêu cầu";
+        host.innerHTML = '<p class="bn-empty err">Chưa kết nối được máy chủ banner (cần bật backend).</p>';
+      });
+  }
+  function bannerCard(b) {
+    b = b || {};
+    var id = b.id;
+    var base = "/api/admin/banner/" + encodeURIComponent(id);
+    /* composite thumbnail, falling back to the raw photo on error */
+    var thumb = '<img class="bn-thumb" src="' + esc(base + "/composite") + '" alt="" loading="lazy" ' +
+      'onerror="this.onerror=null;this.src=' + "'" + esc(base + "/photo") + "'" + '">';
+    var meta = [];
+    if (b.age != null && b.age !== "") meta.push('<span>🎂 ' + esc(b.age) + " tuổi</span>");
+    if (b.birthday) meta.push('<span>📅 ' + esc(b.birthday) + "</span>");
+    if (b.template) meta.push('<span>🖼️ Mẫu: ' + esc(b.template) + "</span>");
+    if (b.contact) meta.push('<span>📞 ' + esc(b.contact) + "</span>");
+    var note = b.note ? '<div class="bn-note">' + esc(b.note) + "</div>" : "";
+    var sel = '<select class="st-sel" data-bnstatus="' + esc(id) + '" data-prev="' + esc(b.status || "Mới") + '" aria-label="Trạng thái yêu cầu">' +
+      BANNER_STATUSES.map(function (s) { return '<option' + (s === b.status ? " selected" : "") + ">" + esc(s) + "</option>"; }).join("") + "</select>";
+    var dl = '<div class="bn-dl">' +
+      '<a href="' + esc(base + "/photo") + '" target="_blank" rel="noopener" download>⬇️ Ảnh gốc</a>' +
+      '<a href="' + esc(base + "/cutout") + '" target="_blank" rel="noopener" download>⬇️ Cutout</a>' +
+      '<a href="' + esc(base + "/composite") + '" target="_blank" rel="noopener" download>⬇️ Ghép</a>' +
+      "</div>";
+    return '<article class="bn-card">' + thumb +
+      '<div class="bn-body">' +
+        '<div class="bn-name">' + esc(b.name || "—") + '</div>' +
+        (meta.length ? '<div class="bn-meta">' + meta.join("") + "</div>" : "") +
+        note +
+        '<div class="bn-at">🕐 ' + esc(fmtDate(b.at)) + "</div>" +
+      "</div>" +
+      '<div class="bn-foot">' + dl + sel + "</div>" +
+    "</article>";
+  }
+  function setBannerStatus(id, status, selEl) {
+    var fd = new FormData();
+    fd.append("status", status);
+    fetch("/api/admin/banner/" + encodeURIComponent(id) + "/status", { method: "POST", body: fd })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (res) {
+        if (res && res.ok) { if (selEl) selEl.setAttribute("data-prev", status); toast("Đã cập nhật trạng thái banner"); }
+        else throw new Error("bad response");
+      })
+      .catch(function () {
+        if (selEl) selEl.value = selEl.getAttribute("data-prev") || "Mới";
+        toast("Không cập nhật được — kiểm tra máy chủ banner.", true);
+      });
+  }
+  var bnReload = $("bannerReload");
+  if (bnReload) bnReload.addEventListener("click", function () { renderBanners(); });
+
+  /* ============================================================
      CUSTOMERS (derived from orders by phone)
      ============================================================ */
   function renderCustomers() {
@@ -1052,6 +1139,12 @@
       if (bs.value === "Đã huỷ" && !confirm("Chuyển yêu cầu sang ĐÃ HUỶ?")) { bs.value = bs.getAttribute("data-prev") || "Mới"; return; }
       if (!SHOP.updateBooking(bs.getAttribute("data-bstatus"), { status: bs.value })) { toast("Không lưu được — bộ nhớ trình duyệt đã đầy.", true); renderBookings(); return; }
       bs.setAttribute("data-prev", bs.value); refreshCounts(); toast("Đã cập nhật trạng thái"); return;
+    }
+    var bn = e.target.closest("[data-bnstatus]");
+    if (bn) {
+      /* banner status POSTs to the backend; revert on failure (handled inside setBannerStatus) */
+      if (bn.value === "Đã huỷ" && !confirm("Chuyển yêu cầu banner sang ĐÃ HUỶ?")) { bn.value = bn.getAttribute("data-prev") || "Mới"; return; }
+      setBannerStatus(bn.getAttribute("data-bnstatus"), bn.value, bn); return;
     }
   });
 
