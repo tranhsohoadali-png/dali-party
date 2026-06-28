@@ -231,6 +231,26 @@ async def admin_status(rid: str, status: str = Form(...)):
     return {"ok": True}
 
 
+@app.delete("/api/admin/banner/{rid}")
+def banner_delete(rid: str):
+    """Delete a banner request (its index record + uploaded files). Admin-only."""
+    rid = _safe_id(rid)
+    items = _load_index()
+    keep = [it for it in items if it.get("id") != rid]
+    if len(keep) == len(items):
+        raise HTTPException(404, "Không tìm thấy yêu cầu.")
+    tmp = INDEX_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        for it in keep:
+            f.write(json.dumps(it, ensure_ascii=False) + "\n")
+    os.replace(tmp, INDEX_FILE)
+    folder = os.path.join(UPLOAD_DIR, rid)
+    if os.path.isdir(folder):
+        import shutil
+        shutil.rmtree(folder, ignore_errors=True)
+    return {"ok": True}
+
+
 # ===========================================================================
 # MOCKUP API — public design templates for the banner builder.
 #   Images are PUBLIC (design templates, no customer photos), so the list and
