@@ -195,6 +195,60 @@
     };
   }
 
+  /**
+   * detectAllFaceCircles(input, [opts]) ->
+   *   { faces:[{ circle:{cx,cy,r}, box:{x,y,w,h,score} }], engine, found, imgW, imgH }
+   *
+   *   Detect ALL faces and return a head-circle per face (same geometry as
+   *   detectFaceCircle: centre biased up, r = max(w,h)*(0.5+padding)), in IMAGE
+   *   pixel coords. Faces are sorted in reading order (top→bottom by row band,
+   *   then left→right). Use imgW/imgH to convert circles to 0..1 fractions.
+   *   For the multi-hole "thay nhiều mặt" admin picker.
+   *   opts.padding (default 0.85), opts.max (default 12).
+   */
+  async function detectAllFaceCircles(input, opts) {
+    opts = opts || {};
+    var pad = (opts.padding == null ? 0.85 : opts.padding);
+    var max = opts.max || 12;
+
+    var img = await toImage(input);
+    var iw = img.naturalWidth || img.width;
+    var ih = img.naturalHeight || img.height;
+
+    var faces = [];
+    try {
+      await ensureMediaPipe();
+      faces = mpDetect(img);
+    } catch (e1) {
+      try { await ensureFaceApi(); faces = await faDetect(img); }
+      catch (e2) { faces = []; }
+    }
+
+    var out = faces.map(function (face) {
+      var cx = face.x + face.w / 2;
+      var cy = face.y + face.h * 0.42;
+      var r = Math.max(face.w, face.h) * (0.5 + pad);
+      return {
+        circle: { cx: cx, cy: cy, r: r },
+        box: { x: face.x, y: face.y, w: face.w, h: face.h, score: face.score }
+      };
+    });
+    // reading order: bucket into rows (~15% of image height) then left→right
+    var rowH = Math.max(1, ih * 0.15);
+    out.sort(function (a, b) {
+      var ra = Math.round(a.circle.cy / rowH), rb = Math.round(b.circle.cy / rowH);
+      if (ra !== rb) return ra - rb;
+      return a.circle.cx - b.circle.cx;
+    });
+    if (out.length > max) out = out.slice(0, max);
+    return { faces: out, engine: _engine, found: out.length > 0, imgW: iw, imgH: ih };
+  }
+
   global.detectFaceCircle = detectFaceCircle;
-  global.DaliFace = { detectFaceCircle: detectFaceCircle, ensureMediaPipe: ensureMediaPipe };
+  global.detectAllFaceCircles = detectAllFaceCircles;
+  global.DaliFace = {
+    detectFaceCircle: detectFaceCircle,
+    detectAllFaceCircles: detectAllFaceCircles,
+    ensureMediaPipe: ensureMediaPipe
+  };
 })(window);

@@ -97,13 +97,22 @@ async def banner_request(
     birthday: str = Form(""),
     age: str = Form(""),
     template: str = Form(""),
+    mockup_id: str = Form(""),
+    mockup_name: str = Form(""),
     contact: str = Form(""),
     note: str = Form(""),
-    photo: UploadFile = File(...),
+    photoSlots: str = Form(""),
+    photo: UploadFile = File(None),
+    photos: list[UploadFile] = File(None),
     cutout: UploadFile = File(None),
     composite: UploadFile = File(None),
 ):
-    """Store a finished banner request from a customer."""
+    """Store a finished banner request from a customer.
+
+    Multi-hole aware: the builder sends `photos` (ordered, one per filled hole)
+    plus `photoSlots` = JSON array of the 1-based hole index each photo belongs to.
+    Legacy single-photo clients still send `photo` and keep working.
+    """
     name = (name or "").strip()[:80]
     if not name:
         raise HTTPException(400, "Thiếu tên bé.")
@@ -112,11 +121,28 @@ async def banner_request(
     folder = os.path.join(UPLOAD_DIR, rid)
     os.makedirs(folder, exist_ok=True)
 
-    # required original photo
-    _read_image(await photo.read())  # validate type/size (re-read below)
-    await photo.seek(0)
-    with open(os.path.join(folder, "photo.png"), "wb") as f:
-        f.write(await photo.read())
+    # gather customer photos in order: new multi `photos[]`, else legacy single `photo`
+    incoming = [p for p in (photos or []) if p is not None]
+    if not incoming and photo is not None:
+        incoming = [photo]
+    if not incoming:
+        raise HTTPException(400, "Thiếu ảnh bé.")
+
+    saved = 0
+    for up in incoming:
+        data = await up.read()
+        try:
+            _read_image(data)  # validate type/size
+        except Exception:
+            continue
+        saved += 1
+        with open(os.path.join(folder, "photo-%d.png" % saved), "wb") as f:
+            f.write(data)
+        if saved == 1:  # also keep photo.png (back-compat + quick thumbnail)
+            with open(os.path.join(folder, "photo.png"), "wb") as f:
+                f.write(data)
+    if saved == 0:
+        raise HTTPException(400, "Ảnh bé không hợp lệ.")
 
     for up, fname in ((cutout, "cutout.png"), (composite, "composite.png")):
         if up is not None:
@@ -125,11 +151,23 @@ async def banner_request(
                 with open(os.path.join(folder, fname), "wb") as f:
                     f.write(data)
 
+    # which hole (1-based) each saved photo maps to, parallel to photo-1..N
+    slots = []
+    try:
+        arr = json.loads(photoSlots) if photoSlots else []
+        if isinstance(arr, list):
+            slots = [int(x) for x in arr][:saved]
+    except Exception:
+        slots = []
+
     rec = {
         "id": rid, "at": _now(), "status": "Mới",
         "name": name, "birthday": (birthday or "").strip()[:40],
         "age": (age or "").strip()[:20], "template": (template or "").strip()[:60],
+        "mockup_id": (mockup_id or "").strip()[:40],
+        "mockup_name": (mockup_name or "").strip()[:80],
         "contact": contact, "note": (note or "").strip()[:500],
+        "photoCount": saved, "photoSlots": slots,
         "files": sorted(os.listdir(folder)),
     }
     with open(INDEX_FILE, "a", encoding="utf-8") as f:
@@ -161,7 +199,9 @@ def admin_list():
 @app.get("/api/admin/banner/{rid}/{which}")
 def admin_file(rid: str, which: str):
     rid = _safe_id(rid)
-    if which not in ("photo", "cutout", "composite"):
+    ok = which in ("photo", "cutout", "composite") or (
+        which.startswith("photo-") and which[6:].isdigit() and len(which) <= 12)
+    if not ok:
         raise HTTPException(404, "Không tìm thấy.")
     p = os.path.join(UPLOAD_DIR, rid, which + ".png")
     if not os.path.exists(p):
@@ -225,6 +265,33 @@ def _hex_or(v, default):
     return default
 
 
+def _parse_holes(holes_json, fallback):
+    """Parse the multi-hole JSON (array of {x,y,w,h,round,label}) into validated
+    fraction dicts. Falls back to [fallback] when empty/invalid (fallback may be None)."""
+    out = []
+    try:
+        arr = json.loads(holes_json) if holes_json else []
+    except Exception:
+        arr = []
+    if isinstance(arr, list):
+        for h in arr[:12]:
+            if not isinstance(h, dict):
+                continue
+            x, y = _frac(h.get("x")), _frac(h.get("y"))
+            w, hh = _frac(h.get("w")), _frac(h.get("h"))
+            if w <= 0 or hh <= 0:
+                continue
+            out.append({
+                "x": x, "y": y,
+                "w": min(w, 1.0 - x), "h": min(hh, 1.0 - y),
+                "round": bool(h.get("round")),
+                "label": str(h.get("label") or "").strip()[:40],
+            })
+    if not out and fallback:
+        out = [fallback]
+    return out
+
+
 def _load_mockups():
     items = []
     if os.path.exists(MOCKUP_INDEX):
@@ -246,10 +313,14 @@ def mockups_list():
     for it in _load_mockups():
         if not it.get("active", True):
             continue
+        holes = it.get("holes")
+        if not holes:
+            holes = [it["hole"]] if it.get("hole") else []
         out.append({
             "id": it.get("id"),
             "name": it.get("name", ""),
-            "hole": it.get("hole"),
+            "holes": holes,
+            "hole": (holes[0] if holes else it.get("hole")),
             "showText": bool(it.get("showText")),
             "anchor": it.get("anchor"),
             "ink": it.get("ink"),
@@ -295,9 +366,14 @@ async def mockup_create(
     subY: str = Form(""),
     ink: str = Form(""),
     script: str = Form(""),
+    holes: str = Form(""),
     image: UploadFile = File(...),
 ):
-    """Create a design-template mockup (multipart). Admin-only via nginx Basic Auth."""
+    """Create a design-template mockup (multipart). Admin-only via nginx Basic Auth.
+
+    `holes` = JSON array of {x,y,w,h,round,label} (0..1 fractions) for MULTIPLE
+    face/photo regions in one design. If absent, the legacy single holeX/Y/W/H is used.
+    """
     name = (name or "").strip()[:80]
     if not name:
         raise HTTPException(400, "Thiếu tên mockup.")
@@ -323,6 +399,19 @@ async def mockup_create(
             "sub": {"x": _frac(subX), "y": _frac(subY)},
         }
 
+    # holes: prefer the multi-hole JSON; fall back to the legacy single holeX/Y/W/H
+    single = {
+        "x": _frac(holeX), "y": _frac(holeY),
+        "w": min(_frac(holeW), 1.0 - _frac(holeX)),
+        "h": min(_frac(holeH), 1.0 - _frac(holeY)),
+        "round": round in ("1", "true", "True", "on", "yes"),
+        "label": "",
+    }
+    has_single = single["w"] > 0 and single["h"] > 0
+    holes_list = _parse_holes(holes, single if has_single else None)
+    if not holes_list:
+        raise HTTPException(400, "Thiếu vùng đặt ảnh — hãy khoanh ít nhất 1 ô.")
+
     mid = uuid.uuid4().hex[:12]
     folder = os.path.join(MOCKUP_DIR, mid)
     os.makedirs(folder, exist_ok=True)
@@ -332,11 +421,8 @@ async def mockup_create(
     rec = {
         "id": mid,
         "name": name,
-        "hole": {
-            "x": _frac(holeX), "y": _frac(holeY),
-            "w": _frac(holeW), "h": _frac(holeH),
-            "round": round in ("1", "true", "True", "on", "yes"),
-        },
+        "holes": holes_list,
+        "hole": holes_list[0],  # back-compat: first hole
         "showText": show,
         "anchor": anchor,
         "ink": _hex_or(ink, "#3a2a23"),
