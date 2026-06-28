@@ -36,7 +36,8 @@
        • (Tuỳ chọn) `holeRound: true` để bo tròn lỗ thành hình tròn
          (đẹp cho chế độ "thay mặt").
      ============================================================ */
-  var TEMPLATES = [
+  // Mẫu "vẽ" mặc định (fallback khi backend /api/mockups chưa sống hoặc rỗng).
+  var FALLBACK_TEMPLATES = [
     { id: "dino",  name: "Khủng long", emoji: "🦕",
       bg: ["#eef6dd", "#cbe7a0"], card: "#eef7d6", stroke: "#b6db84",
       ink: "#2f5d12", script: "#5a8f1f", deco: "🦕", deco2: "🌿",
@@ -66,6 +67,9 @@
        ink: "#2f5d12", script: "#5a8f1f" }
     -------------------------------------------------------------- */
   ];
+  // TEMPLATES = bộ mẫu ĐANG dùng cho gallery. Mặc định = mẫu vẽ fallback;
+  // sẽ được thay bằng mẫu ẢNH NỀN lấy từ /api/mockups nếu backend có dữ liệu.
+  var TEMPLATES = FALLBACK_TEMPLATES;
   var SLOT = { x: 0.265, y: 0.415, w: 0.58, h: 0.47 }; // khung ảnh mặc định (tỉ lệ canvas)
 
   var state = {
@@ -357,9 +361,15 @@
         ctx.fillText(be.loading ? "đang tải mẫu…" : "(thiếu ảnh mẫu)", W / 2, H / 2 - 40);
       }
       var s = slotRect(t);
+      // Chế độ "thay mặt": luôn cắt mặt bé thành hình tròn trong lỗ
+      // (kể cả khi lỗ vốn vuông). "Cả người": tôn trọng hole.round.
+      if (state.mode === "face") s.round = true;
       drawPhotoHole(s);
-      var anchor = (t.anchor) || { title: { x: .5, y: .20 }, name: { x: .5, y: .30 }, sub: { x: .5, y: .37 } };
-      drawTexts({ ink: t.ink || "#333", script: t.script || "#c08a2e" }, anchor);
+      // showText !== false → vẽ chữ; cần có anchor (item.anchor có thể null).
+      if (t.showText !== false) {
+        var anchor = t.anchor || { title: { x: .5, y: .20 }, name: { x: .5, y: .30 }, sub: { x: .5, y: .37 } };
+        drawTexts({ ink: t.ink || "#333", script: t.script || "#c08a2e" }, anchor);
+      }
       return;
     }
 
@@ -408,24 +418,65 @@
   var raf = 0;
   function render() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; draw(); }); }
 
-  /* ---------- gallery mẫu ---------- */
+  /* ---------- gallery mẫu (render lại được sau khi nạp mockup) ---------- */
   var tplWrap = $("bbTpls");
-  TEMPLATES.forEach(function (t) {
-    var b = document.createElement("button");
-    b.type = "button";
-    b.className = "bb-tpl" + (t.id === state.tpl.id ? " active" : "");
-    b.dataset.tpl = t.id;
-    var swBg = (typeof t.bg === "string")
-      ? "#efe7da"
-      : "linear-gradient(135deg," + t.bg[0] + "," + t.bg[1] + ")";
-    b.innerHTML = '<span class="sw" style="background:' + swBg + '">' + t.emoji + '</span><small>' + esc(t.name) + '</small>';
-    b.addEventListener("click", function () {
-      state.tpl = t;
-      [].forEach.call(tplWrap.children, function (c) { c.classList.toggle("active", c.dataset.tpl === t.id); });
-      render();
+  function renderGallery() {
+    if (!tplWrap) return;
+    tplWrap.innerHTML = "";
+    TEMPLATES.forEach(function (t) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "bb-tpl" + (t.id === state.tpl.id ? " active" : "");
+      b.dataset.tpl = t.id;
+      var sw;
+      if (typeof t.bg === "string") {
+        // mẫu ẢNH NỀN: swatch = thumbnail nhỏ của ảnh thiết kế, fallback nền đặc.
+        sw = '<span class="sw" style="background:#efe7da center/cover no-repeat url(\'' +
+             esc(t.bg).replace(/'/g, "%27") + "');\"></span>";
+      } else {
+        // mẫu VẼ: swatch gradient + emoji.
+        var grad = "linear-gradient(135deg," + t.bg[0] + "," + t.bg[1] + ")";
+        sw = '<span class="sw" style="background:' + grad + '">' + (t.emoji || "") + "</span>";
+      }
+      b.innerHTML = sw + "<small>" + esc(t.name) + "</small>";
+      b.addEventListener("click", function () {
+        state.tpl = t;
+        [].forEach.call(tplWrap.children, function (c) { c.classList.toggle("active", c.dataset.tpl === t.id); });
+        render();
+      });
+      tplWrap.appendChild(b);
     });
-    tplWrap.appendChild(b);
-  });
+  }
+  renderGallery();
+
+  /* ---------- nạp mẫu ẢNH NỀN từ kho /api/mockups (degrade gracefully) ---------- */
+  function buildTplFromMockup(m) {
+    return {
+      id: m.id,
+      name: m.name || "Mẫu",
+      bg: m.image,                       // URL same-origin (vd "/api/mockups/<id>/image")
+      hole: m.hole,                      // {x,y,w,h,round} (0..1)
+      anchor: m.anchor || null,          // {title,name,sub} (0..1) hoặc null
+      showText: m.showText !== false,    // mặc định hiện chữ
+      ink: m.ink || "#333",
+      script: m.script || "#c08a2e"
+    };
+  }
+  (function loadMockups() {
+    fetch("/api/mockups", { headers: { Accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var items = j && Array.isArray(j.items) ? j.items : [];
+        // chỉ lấy mẫu có ảnh + lỗ hợp lệ
+        var tpls = items.filter(function (m) { return m && m.image && m.hole; }).map(buildTplFromMockup);
+        if (!tpls.length) return; // backend rỗng/down → giữ nguyên mẫu vẽ fallback
+        TEMPLATES = tpls;
+        state.tpl = TEMPLATES[0]; // mặc định chọn mẫu đầu
+        renderGallery();
+        render();
+      })
+      .catch(function () { /* backend chưa sống → im lặng, giữ mẫu fallback */ });
+  })();
 
   /* ---------- tải ảnh + tách nền ---------- */
   function loadImg(blob) {
@@ -543,6 +594,8 @@
       fd.append("birthday", $("bbDate").value.trim());
       fd.append("age", $("bbAge").value.trim());
       fd.append("template", state.tpl.id);
+      fd.append("mockup_id", state.tpl.id);
+      fd.append("mockup_name", state.tpl.name || "");
       fd.append("contact", contact);
       fd.append("note", $("bbNote").value.trim());
       fd.append("photo", state.photoBlob, "photo.png");

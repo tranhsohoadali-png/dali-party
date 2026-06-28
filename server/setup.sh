@@ -11,7 +11,7 @@ VENV=/opt/dali-api/venv
 NGX=/etc/nginx/sites-available/dalipart
 
 echo "[1/8] dirs"
-mkdir -p /opt/dali-api/models /opt/dali-api/cache /var/www/dali-banner-data
+mkdir -p /opt/dali-api/models /opt/dali-api/cache /var/www/dali-banner-data /var/www/dali-banner-data/mockups
 
 echo "[2/8] apt python3-venv"
 apt-get install -y python3-venv >/tmp/dali_apt.log 2>&1
@@ -24,15 +24,16 @@ echo "[4/8] pip install requirements (heavy: rembg + onnxruntime, a few minutes)
 "$VENV/bin/pip" install -q -r "$SRC/requirements.txt"
 
 echo "[5/8] chown + warm u2net_human_seg model"
-chown -R www-data:www-data /opt/dali-api/models /opt/dali-api/cache /var/www/dali-banner-data
+chown -R www-data:www-data /opt/dali-api/models /opt/dali-api/cache /var/www/dali-banner-data /var/www/dali-banner-data/mockups
 sudo -u www-data env U2NET_HOME=/opt/dali-api/models "$VENV/bin/python" \
   -c "from rembg import new_session; new_session('u2net_human_seg'); print('model ready')" \
   || echo "WARN: model warm failed (will lazy-load on first request)"
 
-echo "[6/8] systemd service"
+echo "[6/8] systemd service (restart so re-running redeploys updated app.py)"
 cp "$SRC/dali-api.service" /etc/systemd/system/dali-api.service
 systemctl daemon-reload
-systemctl enable --now dali-api
+systemctl enable dali-api || true
+systemctl restart dali-api || systemctl enable --now dali-api
 sleep 2
 echo -n "dali-api active? "; systemctl is-active dali-api || true
 

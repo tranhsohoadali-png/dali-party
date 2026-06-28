@@ -273,6 +273,44 @@
   .bn-empty { text-align: center; color: var(--muted); font-weight: 600; padding: 44px 14px; }
   .bn-empty.err { color: #b25e00; }
 
+  /* ---- Kho mockup (mockup warehouse) — upload form + hole picker + saved grid ---- */
+  .mk-form-grid { display: grid; grid-template-columns: 1fr minmax(0, 380px); gap: 22px; align-items: start; }
+  .mk-left { display: flex; flex-direction: column; gap: 14px; }
+  .mk-check { display: flex; align-items: center; gap: 8px; font-weight: 500; margin-top: 6px; }
+  .mk-check input { width: auto; }
+  .mk-hint { font-size: .82rem; color: var(--muted); font-weight: 600; min-height: 1.2em; }
+  .mk-right { display: flex; flex-direction: column; gap: 8px; }
+  .mk-canvas-lbl { font-weight: 600; font-size: .9rem; color: var(--ink-2); }
+  .mk-stage { position: relative; width: 100%; max-width: 380px; border: 1.5px dashed var(--line);
+    border-radius: var(--radius); background: var(--green-50); overflow: hidden; touch-action: none; }
+  .mk-stage canvas { display: block; width: 100%; height: auto; cursor: crosshair; }
+  .mk-overlay { position: absolute; border: 2px solid var(--green-700); background: rgba(111,168,46,.18);
+    box-shadow: 0 0 0 9999px rgba(20,30,16,.08); pointer-events: none; }
+  .mk-overlay.is-round { border-radius: 50%; }
+  .mk-placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+    color: var(--muted); font-size: .84rem; font-weight: 600; padding: 20px; pointer-events: none; }
+
+  .mk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+  .mk-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius);
+    background: #fff; box-shadow: var(--shadow-sm); overflow: hidden; }
+  .mk-thumb-wrap { position: relative; width: 100%; aspect-ratio: 3 / 2; background: var(--green-50);
+    border-bottom: 1px solid var(--line); overflow: hidden; }
+  .mk-thumb-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .mk-hole { position: absolute; border: 2px solid var(--green-700); background: rgba(111,168,46,.16); }
+  .mk-hole.is-round { border-radius: 50%; }
+  .mk-card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; }
+  .mk-card-name { font-size: 1rem; font-weight: 800; color: var(--ink); line-height: 1.2; word-break: break-word; }
+  .mk-card-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: .78rem; color: var(--muted); font-weight: 600; }
+  .mk-card-at { font-size: .74rem; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .mk-card-foot { padding: 10px 14px; border-top: 1px solid var(--line); background: var(--bg-soft);
+    display: flex; justify-content: flex-end; }
+  .mk-empty { text-align: center; color: var(--muted); font-weight: 600; padding: 44px 14px; }
+  .mk-empty.err { color: #b25e00; }
+  @media (max-width: 760px) {
+    .mk-form-grid { grid-template-columns: 1fr; }
+    .mk-stage, .mk-right { max-width: 100%; }
+  }
+
   /* ============================================================
      BI BOARD — Tổng quan dashboard (clean finance-style board)
      White rounded cards on a light tinted board. Reuses site tokens.
@@ -377,6 +415,7 @@
         <button class="tab" data-view="products" type="button">🎈 Sản phẩm <span class="badge-n" id="tabnProducts">0</span></button>
         <button class="tab" data-view="orders" type="button">🧾 Đơn hàng <span class="badge-n" id="tabnOrders">0</span></button>
         <button class="tab" data-view="banners" type="button">🖼️ Yêu cầu banner <span class="badge-n" id="tabnBanners">0</span></button>
+        <button class="tab" data-view="mockups" type="button">🖼️ Kho mockup <span class="badge-n" id="tabnMockups">0</span></button>
         <button class="tab" data-view="customers" type="button">👥 Khách hàng <span class="badge-n" id="tabnCustomers">0</span></button>
         <button class="tab" data-view="bookings" type="button">📅 Đặt dịch vụ <span class="badge-n" id="tabnBookings">0</span></button>
         <button class="tab" data-view="messages" type="button">✉️ Tin nhắn <span class="badge-n" id="tabnMessages">0</span></button>
@@ -536,6 +575,52 @@
           <button class="btn btn--ghost btn--xs" id="bannerReload" type="button">🔄 Tải lại</button>
         </div>
         <div id="bannerList"></div>
+      </div>
+    </section>
+
+    <!-- ===== VIEW: MOCKUPS (Kho mockup — public templates via backend API) ===== -->
+    <section class="view" data-view="mockups" hidden>
+      <div class="panel">
+        <div class="panel-head"><h2>Tải thiết kế mockup lên</h2>
+          <span class="toolbar-spacer"></span></div>
+        <p class="note" style="margin-bottom:18px"><span class="ic" aria-hidden="true">💡</span>
+          <span>Tải ảnh thiết kế lên rồi <b>kéo chuột trên ảnh</b> để khoanh vùng đặt ảnh/khuôn mặt của khách.
+          Mockup đã lưu sẽ hiện cho khách chọn ở trang tạo banner.</span></p>
+        <form id="mkForm">
+          <div class="mk-form-grid">
+            <div class="mk-left">
+              <div class="field"><label for="mkName">Tên mockup *</label>
+                <input type="text" id="mkName" required placeholder="VD: Khung sinh nhật bong bóng hồng"></div>
+              <div class="field"><label for="mkFile">Ảnh thiết kế (PNG/JPG/WebP) *</label>
+                <input type="file" id="mkFile" accept="image/png,image/jpeg,image/webp" required></div>
+              <div class="field"><label>Tuỳ chọn vùng</label>
+                <label class="mk-check"><input type="checkbox" id="mkRound"> 🔵 Tròn (thay mặt)</label>
+                <label class="mk-check"><input type="checkbox" id="mkShowText"> Hiện chữ Happy Birthday + tên / ngày</label>
+              </div>
+              <p class="mk-hint" id="mkHoleInfo">Chưa chọn ảnh.</p>
+            </div>
+            <div class="mk-right">
+              <label class="mk-canvas-lbl">Khoanh vùng đặt ảnh / khuôn mặt</label>
+              <div class="mk-stage" id="mkStage">
+                <canvas id="mkCanvas" width="360" height="240"></canvas>
+                <div class="mk-overlay" id="mkOverlay" hidden></div>
+                <div class="mk-placeholder" id="mkPlaceholder">Chọn ảnh để bắt đầu — rồi kéo chuột để khoanh vùng.</div>
+              </div>
+            </div>
+          </div>
+          <p class="geo-status err" id="mkErr" role="alert" style="margin-top:6px"></p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+            <button class="btn" type="submit" id="mkSubmit">💾 Lưu mockup</button>
+            <button class="btn btn--ghost btn--xs" type="reset" id="mkReset">♻️ Xoá form</button>
+          </div>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Mockup đã lưu</h2><span class="count-pill" id="mockupCount">0</span>
+          <span class="toolbar-spacer"></span>
+          <button class="btn btn--ghost btn--xs" id="mockupReload" type="button">🔄 Tải lại</button>
+        </div>
+        <div id="mockupList"></div>
       </div>
     </section>
 
@@ -754,6 +839,6 @@
 
 <script src="assets/js/stores.js?v=15"></script>
 <script src="assets/js/shop-data.js?v=3"></script>
-<script src="assets/js/admin.js?v=15"></script>
+<script src="assets/js/admin.js?v=16"></script>
 </body>
 </html>

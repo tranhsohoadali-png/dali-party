@@ -26,7 +26,10 @@ from PIL import Image, ImageOps
 DATA_DIR = os.environ.get("DALI_DATA_DIR", "/var/www/dali-banner-data")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 INDEX_FILE = os.path.join(DATA_DIR, "requests.jsonl")
+MOCKUP_DIR = os.path.join(DATA_DIR, "mockups")        # uploads-sibling design store
+MOCKUP_INDEX = os.path.join(DATA_DIR, "mockups.jsonl")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(MOCKUP_DIR, exist_ok=True)
 
 MAX_BYTES = 12 * 1024 * 1024  # 12 MB per image
 MAX_SIDE = 1600               # downscale very large uploads for speed/memory
@@ -185,4 +188,178 @@ async def admin_status(rid: str, status: str = Form(...)):
         for it in items:
             f.write(json.dumps(it, ensure_ascii=False) + "\n")
     os.replace(tmp, INDEX_FILE)
+    return {"ok": True}
+
+
+# ===========================================================================
+# MOCKUP API — public design templates for the banner builder.
+#   Images are PUBLIC (design templates, no customer photos), so the list and
+#   image endpoints are open; write-ops live under /api/admin/ (nginx Basic
+#   Auth). Records are stored in mockups.jsonl + mockups/<id>/design.<ext>.
+# ===========================================================================
+
+# PIL format -> (file extension, response media type). Anything else rejected.
+_MOCKUP_TYPES = {
+    "PNG": ("png", "image/png"),
+    "JPEG": ("jpg", "image/jpeg"),
+    "WEBP": ("webp", "image/webp"),
+}
+
+
+def _frac(v) -> float:
+    """Parse a 0..1 fraction from form input, clamped into range."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 0.0
+    if f != f:  # NaN
+        return 0.0
+    return 0.0 if f < 0.0 else (1.0 if f > 1.0 else f)
+
+
+def _hex_or(v, default):
+    """Validate a #rrggbb hex colour, else fall back to default."""
+    s = (v or "").strip()
+    if len(s) == 7 and s[0] == "#" and all(c in "0123456789abcdefABCDEF" for c in s[1:]):
+        return s
+    return default
+
+
+def _load_mockups():
+    items = []
+    if os.path.exists(MOCKUP_INDEX):
+        with open(MOCKUP_INDEX, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        items.append(json.loads(line))
+                    except Exception:
+                        pass
+    return items
+
+
+@app.get("/api/mockups")
+def mockups_list():
+    """PUBLIC: active design templates, oldest -> newest (stable gallery order)."""
+    out = []
+    for it in _load_mockups():
+        if not it.get("active", True):
+            continue
+        out.append({
+            "id": it.get("id"),
+            "name": it.get("name", ""),
+            "hole": it.get("hole"),
+            "showText": bool(it.get("showText")),
+            "anchor": it.get("anchor"),
+            "ink": it.get("ink"),
+            "script": it.get("script"),
+            "image": "/api/mockups/%s/image" % it.get("id"),
+            "at": it.get("at"),
+        })
+    return {"items": out}
+
+
+@app.get("/api/mockups/{mid}/image")
+def mockup_image(mid: str):
+    """PUBLIC: serve the uploaded design image with its real media type."""
+    mid = _safe_id(mid)
+    for it in _load_mockups():
+        if it.get("id") == mid and it.get("active", True):
+            ext = it.get("ext", "png")
+            media = _MOCKUP_TYPES.get(
+                {"png": "PNG", "jpg": "JPEG", "jpeg": "JPEG", "webp": "WEBP"}.get(ext, "PNG"),
+                ("png", "image/png"),
+            )[1]
+            p = os.path.join(MOCKUP_DIR, mid, "design." + ext)
+            if os.path.exists(p):
+                return FileResponse(p, media_type=media)
+            break
+    raise HTTPException(404, "Không tìm thấy mockup.")
+
+
+@app.post("/api/admin/mockups")
+async def mockup_create(
+    name: str = Form(...),
+    holeX: float = Form(...),
+    holeY: float = Form(...),
+    holeW: float = Form(...),
+    holeH: float = Form(...),
+    round: str = Form("1"),
+    showText: str = Form("0"),
+    titleX: str = Form(""),
+    titleY: str = Form(""),
+    nameX: str = Form(""),
+    nameY: str = Form(""),
+    subX: str = Form(""),
+    subY: str = Form(""),
+    ink: str = Form(""),
+    script: str = Form(""),
+    image: UploadFile = File(...),
+):
+    """Create a design-template mockup (multipart). Admin-only via nginx Basic Auth."""
+    name = (name or "").strip()[:80]
+    if not name:
+        raise HTTPException(400, "Thiếu tên mockup.")
+
+    im = _read_image(await image.read())  # validates size/type (re-read below)
+    fmt = (im.format or "").upper()
+    if fmt not in _MOCKUP_TYPES:
+        raise HTTPException(400, "Ảnh phải là PNG, JPEG hoặc WEBP.")
+    ext, _media = _MOCKUP_TYPES[fmt]
+
+    show = showText in ("1", "true", "True", "on", "yes")
+    anchor = None
+    if show:
+        anchor = {
+            "title": {"x": _frac(titleX), "y": _frac(titleY)},
+            "name": {"x": _frac(nameX), "y": _frac(nameY)},
+            "sub": {"x": _frac(subX), "y": _frac(subY)},
+        }
+
+    mid = uuid.uuid4().hex[:12]
+    folder = os.path.join(MOCKUP_DIR, mid)
+    os.makedirs(folder, exist_ok=True)
+    await image.seek(0)
+    with open(os.path.join(folder, "design." + ext), "wb") as f:
+        f.write(await image.read())
+
+    rec = {
+        "id": mid,
+        "name": name,
+        "hole": {
+            "x": _frac(holeX), "y": _frac(holeY),
+            "w": _frac(holeW), "h": _frac(holeH),
+            "round": round in ("1", "true", "True", "on", "yes"),
+        },
+        "showText": show,
+        "anchor": anchor,
+        "ink": _hex_or(ink, "#3a2a23"),
+        "script": _hex_or(script, "#d81b60"),
+        "ext": ext,
+        "active": True,
+        "at": _now(),
+    }
+    with open(MOCKUP_INDEX, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return {"ok": True, "id": mid}
+
+
+@app.delete("/api/admin/mockups/{mid}")
+def mockup_delete(mid: str):
+    """Soft-delete a mockup (active=false) so it drops out of the public list."""
+    mid = _safe_id(mid)
+    items = _load_mockups()
+    found = False
+    for it in items:
+        if it.get("id") == mid:
+            it["active"] = False
+            found = True
+    if not found:
+        raise HTTPException(404, "Không tìm thấy mockup.")
+    tmp = MOCKUP_INDEX + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        for it in items:
+            f.write(json.dumps(it, ensure_ascii=False) + "\n")
+    os.replace(tmp, MOCKUP_INDEX)
     return {"ok": True}

@@ -91,12 +91,13 @@
     currentView = name;
     document.querySelectorAll(".view").forEach(function (v) { v.hidden = v.getAttribute("data-view") !== name; });
     document.querySelectorAll(".tab").forEach(function (t) { t.classList.toggle("active", t.getAttribute("data-view") === name); });
-    var TITLES = { overview: "Tổng quan", products: "Sản phẩm", orders: "Đơn hàng", banners: "Yêu cầu banner", customers: "Khách hàng", bookings: "Đặt dịch vụ", messages: "Tin nhắn", stores: "Điểm bán", settings: "Cài đặt" };
+    var TITLES = { overview: "Tổng quan", products: "Sản phẩm", orders: "Đơn hàng", banners: "Yêu cầu banner", mockups: "Kho mockup", customers: "Khách hàng", bookings: "Đặt dịch vụ", messages: "Tin nhắn", stores: "Điểm bán", settings: "Cài đặt" };
     var pt = $("pageTitle"); if (pt) pt.textContent = TITLES[name] || "Quản trị";
     if (name === "overview") renderOverview();
     else if (name === "products") renderProducts();
     else if (name === "orders") renderOrders();
     else if (name === "banners") renderBanners();
+    else if (name === "mockups") renderMockups();
     else if (name === "customers") renderCustomers();
     else if (name === "bookings") renderBookings();
     else if (name === "messages") renderMessages();
@@ -153,6 +154,7 @@
       $("tabnCustomers").textContent = Object.keys(phones).length;
     }
     refreshBannerCount();
+    refreshMockupCount();
   }
 
   /* Banner tab badge: fetched from the backend (may be DOWN). On any error, leave 0. */
@@ -162,6 +164,18 @@
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(function (data) {
         var n = data && (typeof data.count === "number" ? data.count : (Array.isArray(data.items) ? data.items.length : 0));
+        badge.textContent = n || 0;
+      })
+      .catch(function () { badge.textContent = "0"; });
+  }
+
+  /* Mockup tab badge: fetched from the PUBLIC list endpoint (may be DOWN). On any error, leave 0. */
+  function refreshMockupCount() {
+    var badge = $("tabnMockups"); if (!badge) return;
+    fetch("/api/mockups")
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (data) {
+        var n = data && Array.isArray(data.items) ? data.items.length : 0;
         badge.textContent = n || 0;
       })
       .catch(function () { badge.textContent = "0"; });
@@ -789,6 +803,245 @@
   if (bnReload) bnReload.addEventListener("click", function () { renderBanners(); });
 
   /* ============================================================
+     MOCKUPS (Kho mockup — public design templates via backend API, may be DOWN)
+     GET    /api/mockups                  -> {items:[{id,name,hole,showText,anchor,image,at,…}]}
+     POST   /api/admin/mockups (multipart)-> {ok,id}
+     DELETE /api/admin/mockups/{id}       -> {ok}
+     Upload uses a VISUAL HOLE PICKER: load the chosen image onto a canvas
+     (fit ≤360px wide), drag to draw the photo/face hole, normalize to 0..1.
+     ============================================================ */
+  var mkImg = null;            // the loaded HTMLImageElement (null until a file is picked)
+  var mkScale = 1;             // displayed-canvas px per natural image px
+  var mkHole = null;           // committed hole rect in CANVAS px: {x,y,w,h} (null until drawn)
+  var mkDrag = null;           // in-progress drag anchor {x,y} in canvas px
+  var MK_CANVAS_MAX = 360;     // max canvas width in px (fit-to-width)
+
+  function mkCanvas() { return $("mkCanvas"); }
+  function mkRedrawBase() {
+    var cv = mkCanvas(); if (!cv) return;
+    var ctx = cv.getContext("2d"); if (!ctx) return;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    if (mkImg) ctx.drawImage(mkImg, 0, 0, cv.width, cv.height);
+  }
+  /* Position the live overlay box from a canvas-px rect, accounting for the
+     canvas being CSS-scaled to its container width. */
+  function mkPositionOverlay(rect) {
+    var ov = $("mkOverlay"), cv = mkCanvas(); if (!ov || !cv) return;
+    if (!rect || rect.w < 1 || rect.h < 1) { ov.hidden = true; return; }
+    var disp = cv.getBoundingClientRect();
+    var sx = cv.width ? disp.width / cv.width : 1;
+    var sy = cv.height ? disp.height / cv.height : 1;
+    ov.style.left = (rect.x * sx) + "px";
+    ov.style.top = (rect.y * sy) + "px";
+    ov.style.width = (rect.w * sx) + "px";
+    ov.style.height = (rect.h * sy) + "px";
+    ov.classList.toggle("is-round", !!($("mkRound") && $("mkRound").checked));
+    ov.hidden = false;
+  }
+  function mkUpdateHoleInfo() {
+    var info = $("mkHoleInfo"); if (!info) return;
+    if (!mkImg) { info.textContent = "Chưa chọn ảnh."; return; }
+    if (!mkHole || mkHole.w < 1 || mkHole.h < 1) { info.textContent = "Kéo chuột trên ảnh để khoanh vùng đặt ảnh/khuôn mặt."; return; }
+    var cv = mkCanvas();
+    var fx = (mkHole.x / cv.width * 100), fy = (mkHole.y / cv.height * 100);
+    var fw = (mkHole.w / cv.width * 100), fh = (mkHole.h / cv.height * 100);
+    info.textContent = "Vùng: " + fw.toFixed(0) + "% × " + fh.toFixed(0) + "% — tại (" + fx.toFixed(0) + "%, " + fy.toFixed(0) + "%).";
+  }
+  /* Translate a pointer event to canvas-internal px (handles CSS scaling). */
+  function mkEventToCanvas(e) {
+    var cv = mkCanvas(); var r = cv.getBoundingClientRect();
+    var cx = (e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX);
+    var cy = (e.touches && e.touches[0] ? e.touches[0].clientY : e.clientY);
+    var sx = r.width ? cv.width / r.width : 1;
+    var sy = r.height ? cv.height / r.height : 1;
+    var x = (cx - r.left) * sx, y = (cy - r.top) * sy;
+    return { x: Math.max(0, Math.min(cv.width, x)), y: Math.max(0, Math.min(cv.height, y)) };
+  }
+  function mkRectFrom(a, b) {
+    return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
+  }
+  function mkLoadFile(file) {
+    if (!file) return;
+    if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) { $("mkErr").textContent = "Ảnh phải là PNG, JPG hoặc WebP."; return; }
+    $("mkErr").textContent = "";
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      var img = new Image();
+      img.onload = function () {
+        var nw = img.naturalWidth || img.width, nh = img.naturalHeight || img.height;
+        if (!nw || !nh) { $("mkErr").textContent = "Không đọc được kích thước ảnh."; return; }
+        mkImg = img;
+        mkScale = Math.min(1, MK_CANVAS_MAX / nw);
+        var cv = mkCanvas();
+        cv.width = Math.round(nw * mkScale);
+        cv.height = Math.round(nh * mkScale);
+        mkHole = null; mkDrag = null;
+        mkRedrawBase();
+        var ov = $("mkOverlay"); if (ov) ov.hidden = true;
+        var ph = $("mkPlaceholder"); if (ph) ph.hidden = true;
+        mkUpdateHoleInfo();
+      };
+      img.onerror = function () { $("mkErr").textContent = "Không tải được ảnh đã chọn."; };
+      img.src = ev.target.result;
+    };
+    reader.onerror = function () { $("mkErr").textContent = "Không đọc được tệp ảnh."; };
+    reader.readAsDataURL(file);
+  }
+
+  var mkFileInput = $("mkFile");
+  if (mkFileInput) mkFileInput.addEventListener("change", function () { mkLoadFile(this.files && this.files[0]); });
+
+  var mkStage = $("mkStage");
+  if (mkStage) {
+    function mkDown(e) {
+      if (!mkImg) return;
+      e.preventDefault();
+      mkDrag = mkEventToCanvas(e);
+      mkHole = { x: mkDrag.x, y: mkDrag.y, w: 0, h: 0 };
+      mkPositionOverlay(mkHole);
+    }
+    function mkMove(e) {
+      if (!mkDrag) return;
+      e.preventDefault();
+      mkHole = mkRectFrom(mkDrag, mkEventToCanvas(e));
+      mkPositionOverlay(mkHole);
+    }
+    function mkUp() {
+      if (!mkDrag) return;
+      mkDrag = null;
+      if (!mkHole || mkHole.w < 4 || mkHole.h < 4) { mkHole = null; var ov = $("mkOverlay"); if (ov) ov.hidden = true; }
+      mkUpdateHoleInfo();
+    }
+    mkStage.addEventListener("mousedown", mkDown);
+    document.addEventListener("mousemove", mkMove);
+    document.addEventListener("mouseup", mkUp);
+    mkStage.addEventListener("touchstart", mkDown, { passive: false });
+    mkStage.addEventListener("touchmove", mkMove, { passive: false });
+    mkStage.addEventListener("touchend", mkUp);
+  }
+  /* Round toggle re-styles the live overlay immediately */
+  var mkRoundChk = $("mkRound");
+  if (mkRoundChk) mkRoundChk.addEventListener("change", function () { if (mkHole) mkPositionOverlay(mkHole); });
+  /* Keep overlay aligned to the canvas if the panel reflows */
+  window.addEventListener("resize", function () { if (mkHole && !$("mkStage").closest(".view").hidden) mkPositionOverlay(mkHole); });
+
+  function mkResetForm() {
+    var f = $("mkForm"); if (f) f.reset();
+    mkImg = null; mkHole = null; mkDrag = null; mkScale = 1;
+    var cv = mkCanvas(); if (cv) { cv.width = 360; cv.height = 240; var ctx = cv.getContext("2d"); if (ctx) ctx.clearRect(0, 0, cv.width, cv.height); }
+    var ov = $("mkOverlay"); if (ov) ov.hidden = true;
+    var ph = $("mkPlaceholder"); if (ph) ph.hidden = false;
+    $("mkErr").textContent = "";
+    mkUpdateHoleInfo();
+  }
+  var mkResetBtn = $("mkReset");
+  if (mkResetBtn) mkResetBtn.addEventListener("click", function (e) { e.preventDefault(); mkResetForm(); });
+
+  var mkForm = $("mkForm");
+  if (mkForm) mkForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var err = $("mkErr"); err.textContent = "";
+    var name = $("mkName").value.trim();
+    var file = $("mkFile").files && $("mkFile").files[0];
+    if (!name) { err.textContent = "Vui lòng nhập tên mockup."; $("mkName").focus(); return; }
+    if (!file) { err.textContent = "Vui lòng chọn ảnh thiết kế."; $("mkFile").focus(); return; }
+    if (!mkImg) { err.textContent = "Ảnh chưa sẵn sàng — hãy chọn lại."; return; }
+    if (!mkHole || mkHole.w < 4 || mkHole.h < 4) { err.textContent = "Hãy kéo chuột trên ảnh để khoanh vùng đặt ảnh/khuôn mặt."; return; }
+    var cv = mkCanvas();
+    /* normalize hole rect → 0..1 fractions of the design image */
+    var hx = mkHole.x / cv.width, hy = mkHole.y / cv.height;
+    var hw = mkHole.w / cv.width, hh = mkHole.h / cv.height;
+    hx = Math.max(0, Math.min(1, hx)); hy = Math.max(0, Math.min(1, hy));
+    hw = Math.max(0, Math.min(1 - hx, hw)); hh = Math.max(0, Math.min(1 - hy, hh));
+    var round = ($("mkRound") && $("mkRound").checked) ? "1" : "0";
+    var showText = ($("mkShowText") && $("mkShowText").checked) ? "1" : "0";
+
+    var fd = new FormData();
+    fd.append("name", name);
+    fd.append("holeX", hx.toFixed(4)); fd.append("holeY", hy.toFixed(4));
+    fd.append("holeW", hw.toFixed(4)); fd.append("holeH", hh.toFixed(4));
+    fd.append("round", round); fd.append("showText", showText);
+    /* default-center the text anchors (below the hole), used only when showText=1 */
+    var cxHole = (hx + hw / 2).toFixed(4);
+    fd.append("titleX", cxHole); fd.append("titleY", Math.min(0.96, hy + hh + 0.06).toFixed(4));
+    fd.append("nameX", cxHole); fd.append("nameY", Math.min(0.98, hy + hh + 0.14).toFixed(4));
+    fd.append("subX", cxHole); fd.append("subY", Math.min(0.99, hy + hh + 0.20).toFixed(4));
+    fd.append("image", file, file.name);
+
+    var btn = $("mkSubmit"); var label = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Đang lưu…"; }
+    fetch("/api/admin/mockups", { method: "POST", body: fd })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error("bad response");
+        toast("Đã lưu mockup mới");
+        mkResetForm();
+        renderMockups();
+      })
+      .catch(function () {
+        err.textContent = "Không lưu được — chưa kết nối được máy chủ (cần bật backend).";
+        toast("Không lưu được mockup — kiểm tra máy chủ.", true);
+      })
+      .then(function () { if (btn) { btn.disabled = false; btn.textContent = label; } });
+  });
+
+  function renderMockups() {
+    var host = $("mockupList"); if (!host) return;
+    host.innerHTML = '<p class="mk-empty">Đang tải mockup…</p>';
+    fetch("/api/mockups")
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (data) {
+        var items = (data && Array.isArray(data.items)) ? data.items : [];
+        var badge = $("tabnMockups"); if (badge) badge.textContent = items.length || 0;
+        $("mockupCount").textContent = items.length + " mockup";
+        if (!items.length) { host.innerHTML = '<p class="mk-empty">Chưa có mockup nào — tải thiết kế lên để khách chọn.</p>'; return; }
+        host.innerHTML = '<div class="mk-grid">' + items.map(mockupCard).join("") + "</div>";
+      })
+      .catch(function () {
+        $("mockupCount").textContent = "0 mockup";
+        host.innerHTML = '<p class="mk-empty err">Chưa kết nối được máy chủ (cần bật backend).</p>';
+      });
+  }
+  function mockupCard(m) {
+    m = m || {};
+    var id = m.id;
+    var img = (typeof m.image === "string" && m.image) ? m.image : ("/api/mockups/" + encodeURIComponent(id) + "/image");
+    var h = m.hole || {};
+    /* hole overlay as % of the thumbnail (object-fit:contain means hole sits over the image box) */
+    var holeBox = "";
+    if (typeof h.x === "number" && typeof h.y === "number" && typeof h.w === "number" && typeof h.h === "number") {
+      var cls = h.round ? " is-round" : "";
+      holeBox = '<div class="mk-hole' + cls + '" style="left:' + (h.x * 100).toFixed(2) + "%;top:" + (h.y * 100).toFixed(2) +
+        "%;width:" + (h.w * 100).toFixed(2) + "%;height:" + (h.h * 100).toFixed(2) + '%"></div>';
+    }
+    var meta = [];
+    meta.push('<span>' + (h.round ? "🔵 Tròn" : "▭ Chữ nhật") + "</span>");
+    if (m.showText) meta.push("<span>🅰️ Có chữ</span>");
+    return '<article class="mk-card">' +
+      '<div class="mk-thumb-wrap"><img src="' + esc(img) + '" alt="" loading="lazy">' + holeBox + "</div>" +
+      '<div class="mk-card-body">' +
+        '<div class="mk-card-name">' + esc(m.name || "—") + "</div>" +
+        '<div class="mk-card-meta">' + meta.join("") + "</div>" +
+        (m.at ? '<div class="mk-card-at">🕐 ' + esc(fmtDate(m.at)) + "</div>" : "") +
+      "</div>" +
+      '<div class="mk-card-foot"><button class="mini-btn danger" data-mkdel="' + esc(id) + '" type="button">🗑️ Xoá</button></div>' +
+    "</article>";
+  }
+  function deleteMockup(id) {
+    if (!confirm("Xoá mockup này? Khách sẽ không còn chọn được mẫu này.")) return;
+    fetch("/api/admin/mockups/" + encodeURIComponent(id), { method: "DELETE" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error("bad response");
+        toast("Đã xoá mockup");
+        renderMockups();
+      })
+      .catch(function () { toast("Không xoá được — kiểm tra máy chủ.", true); });
+  }
+  var mkListReload = $("mockupReload");
+  if (mkListReload) mkListReload.addEventListener("click", function () { renderMockups(); });
+
+  /* ============================================================
      CUSTOMERS (derived from orders by phone)
      ============================================================ */
   function renderCustomers() {
@@ -1119,6 +1372,7 @@
     var bd = t.closest("[data-bdel]"); if (bd) { if (confirm("Xoá yêu cầu này?")) { SHOP.deleteBooking(bd.getAttribute("data-bdel")); renderBookings(); refreshCounts(); toast("Đã xoá yêu cầu"); } return; }
     var mv = t.closest("[data-mview]"); if (mv) { viewMessage(mv.getAttribute("data-mview")); return; }
     var md = t.closest("[data-mdel]"); if (md) { if (confirm("Xoá tin nhắn này?")) { SHOP.deleteMessage(md.getAttribute("data-mdel")); renderMessages(); refreshCounts(); toast("Đã xoá tin nhắn"); } return; }
+    var mkd = t.closest("[data-mkdel]"); if (mkd) { deleteMockup(mkd.getAttribute("data-mkdel")); return; }
     var se = t.closest("[data-sedit]"); if (se) { openStore(se.getAttribute("data-sedit")); return; }
     var sd = t.closest("[data-sdel]"); if (sd) { deleteStore(sd.getAttribute("data-sdel")); return; }
     var cv = t.closest("[data-csv]"); if (cv) { exportOrdersCSV(); return; }
