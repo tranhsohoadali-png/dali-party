@@ -39,6 +39,9 @@
   .bb-zoom{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:.86rem;color:#4a5740}
   .bb-zoom input{flex:1}
   .bb-note{font-size:.8rem;color:#6b7763;margin:8px 0 0}
+  .bb-mode{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-top:12px;font-size:.86rem;color:#4a5740}
+  .bb-mode>span{font-weight:600}
+  .bb-mode label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
   .bb-step input[type=text],.bb-step input:not([type]),.bb-step textarea{width:100%;padding:11px 13px;border:1px solid #d8e0c8;
     border-radius:10px;font:inherit;margin-bottom:10px;background:#fcfdfa}
   .bb-step input:focus,.bb-step textarea:focus{outline:none;border-color:var(--green-500,#8cc63f);box-shadow:0 0 0 3px rgba(140,198,63,.15)}
@@ -126,6 +129,11 @@
           <h3>2 · Ảnh của bé</h3>
           <label class="bb-upload">📷 Tải ảnh bé<input type="file" id="bbPhoto" accept="image/*" hidden></label>
           <div class="bb-status" id="bbPhotoStatus"></div>
+          <div class="bb-mode" id="bbModeWrap" hidden>
+            <span>Kiểu:</span>
+            <label><input type="radio" name="bbmode" value="full" checked> Cả người</label>
+            <label><input type="radio" name="bbmode" value="face"> 🙂 Thay mặt (cắt mặt tròn)</label>
+          </div>
           <label class="bb-zoom" id="bbZoomWrap" hidden>Phóng to <input type="range" id="bbZoom" min="0.5" max="2.6" step="0.01" value="1"></label>
           <p class="bb-note">💡 Kéo ảnh ngay trong khung xem trước để chỉnh vị trí cho vừa.</p>
         </div>
@@ -207,6 +215,7 @@
 
 <script src="assets/js/shop-data.js?v=1"></script>
 <script src="assets/js/main.js?v=16"></script>
-<script src="assets/js/banner-builder.js?v=1"></script>
+<script src="assets/js/face-circle.js?v=1"></script>
+<script src="assets/js/banner-builder.js?v=2"></script>
 </body>
 </html>

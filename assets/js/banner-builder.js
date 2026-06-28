@@ -31,9 +31,12 @@
 
   var state = {
     tpl: TEMPLATES[0],
-    img: null,            // ảnh đang hiển thị (cutout nếu có, không thì ảnh gốc)
+    img: null,            // ảnh đang hiển thị trong khung
     photoBlob: null,      // ảnh gốc (blob) để gửi shop
     cutoutBlob: null,     // ảnh đã tách nền (blob) nếu có
+    mode: "full",         // "full" = cả người | "face" = thay mặt (cắt mặt tròn)
+    fullImg: null,        // ảnh chế độ "cả người" (cutout nếu có, không thì ảnh gốc)
+    faceImg: null,        // canvas mặt tròn (chế độ "thay mặt")
     tf: { scale: 1, dx: 0, dy: 0 },
     name: "", date: "", age: "",
     sent: false
@@ -178,13 +181,15 @@
     var file = e.target.files && e.target.files[0];
     if (!file) return;
     if (file.size > 12 * 1024 * 1024) { setStatus("Ảnh quá lớn (tối đa 12MB).", "err"); return; }
-    state.photoBlob = file; state.cutoutBlob = null;
-    state.tf = { scale: 1, dx: 0, dy: 0 };
-    $("bbZoom").value = 1;
-    try { state.img = await loadImg(file); } catch (err) { setStatus("Không đọc được ảnh.", "err"); return; }
-    $("bbZoomWrap").hidden = false; $("bbHint").textContent = "Kéo ảnh trong khung để chỉnh vị trí.";
+    state.photoBlob = file; state.cutoutBlob = null; state.faceImg = null; state.mode = "full";
+    state.tf = { scale: 1, dx: 0, dy: 0 }; $("bbZoom").value = 1;
+    var fullR = document.querySelector('input[name=bbmode][value=full]'); if (fullR) fullR.checked = true;
+    try { state.fullImg = state.img = await loadImg(file); } catch (err) { setStatus("Không đọc được ảnh.", "err"); return; }
+    $("bbZoomWrap").hidden = false; $("bbModeWrap").hidden = false;
+    $("bbHint").textContent = "Kéo ảnh trong khung để chỉnh vị trí.";
     render();
-    // gọi AI tách nền (nếu backend sống)
+    if (window.DaliFace && window.DaliFace.ensureMediaPipe) window.DaliFace.ensureMediaPipe().catch(function () {}); // làm nóng model mặt
+    // AI tách nền cả người (chế độ "Cả người") — cần backend; không có thì dùng ảnh gốc
     setStatus("🪄 Đang tách nền bằng AI…", "busy");
     try {
       var fd = new FormData(); fd.append("file", file, "photo.png");
@@ -192,11 +197,42 @@
       if (!r.ok) throw new Error("bg " + r.status);
       var cut = await r.blob();
       if (!cut || cut.size < 100) throw new Error("empty");
-      state.cutoutBlob = cut; state.img = await loadImg(cut);
-      setStatus("✅ Đã tách nền xong.", "ok"); render();
+      state.cutoutBlob = cut; state.fullImg = await loadImg(cut);
+      if (state.mode === "full") { state.img = state.fullImg; render(); }
+      setStatus("✅ Đã tách nền xong.", "ok");
     } catch (err) {
       setStatus("Dùng ảnh gốc (chưa tách được nền). Bạn vẫn gửi yêu cầu bình thường nhé.", "");
     }
+  });
+
+  /* ---- chế độ Cả người / Thay mặt (cắt mặt tròn, chạy trên trình duyệt) ---- */
+  function applyMode() {
+    state.tf = { scale: 1, dx: 0, dy: 0 }; $("bbZoom").value = 1;
+    state.img = (state.mode === "face" && state.faceImg) ? state.faceImg : state.fullImg;
+    render();
+  }
+  [].forEach.call(document.querySelectorAll('input[name=bbmode]'), function (radio) {
+    radio.addEventListener("change", async function () {
+      if (!this.checked) return;
+      if (this.value === "face") {
+        state.mode = "face";
+        if (!state.faceImg) {
+          if (!window.detectFaceCircle || !state.photoBlob) { setStatus("Chưa sẵn sàng cắt mặt.", "err"); return; }
+          setStatus("🙂 Đang tự cắt mặt bé…", "busy");
+          try {
+            var fr = await window.detectFaceCircle(state.photoBlob, { size: 512, padding: 0.85 });
+            state.faceImg = fr.canvas;
+            setStatus(fr.found ? "✅ Đã cắt mặt tự động (" + fr.engine + ")." : "Chưa thấy mặt rõ — dùng vòng giữa, kéo/phóng để chỉnh.", fr.found ? "ok" : "");
+          } catch (e2) {
+            setStatus("Chưa cắt được mặt (nên dùng ảnh chụp thẳng, rõ mặt, nền đơn giản).", "err");
+            state.mode = "full";
+            var fr2 = document.querySelector('input[name=bbmode][value=full]'); if (fr2) fr2.checked = true;
+            applyMode(); return;
+          }
+        }
+      } else { state.mode = "full"; }
+      applyMode();
+    });
   });
 
   $("bbZoom").addEventListener("input", function () { state.tf.scale = parseFloat(this.value) || 1; render(); });
