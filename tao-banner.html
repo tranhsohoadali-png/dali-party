@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tự tạo banner sinh nhật — Dali Party</title>
+<meta name="description" content="Tự tạo banner sinh nhật cho bé: chọn mẫu, tải ảnh bé, AI tự tách nền và ghép cảnh, rồi gửi yêu cầu để Dali Party làm bản chính.">
+<link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/styles.css?v=13">
+<style>
+  .balloon-layer{display:none!important}
+  html{scroll-behavior:auto}
+  /* ---- banner builder ---- */
+  .bb{display:grid;grid-template-columns:minmax(0,440px) 1fr;gap:28px;align-items:start}
+  @media (max-width:820px){.bb{grid-template-columns:1fr}}
+  .bb-preview{position:sticky;top:90px}
+  @media (max-width:820px){.bb-preview{position:static}}
+  #bannerCanvas{width:100%;max-width:440px;height:auto;display:block;margin:0 auto;border-radius:18px;
+    box-shadow:0 10px 34px rgba(40,70,0,.16),0 2px 8px rgba(0,0,0,.06);background:#f3f5ec;touch-action:none;cursor:grab}
+  #bannerCanvas.dragging{cursor:grabbing}
+  .bb-hint{text-align:center;color:var(--muted,#6b7763);font-size:.9rem;margin-top:10px}
+  .bb-controls{display:flex;flex-direction:column;gap:18px}
+  .bb-step{background:#fff;border:1px solid #e9eede;border-radius:16px;padding:16px 18px;box-shadow:0 1px 3px rgba(20,40,0,.05)}
+  .bb-step h3{margin:0 0 12px;font-size:1rem;color:var(--green-700,#416900)}
+  .bb-tpls{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .bb-tpl{border:2px solid #e6ecda;border-radius:12px;padding:8px 6px;cursor:pointer;text-align:center;background:#fbfdf6;transition:.15s;font:inherit}
+  .bb-tpl:hover{border-color:#bcd98a}
+  .bb-tpl.active{border-color:var(--green-500,#8cc63f);box-shadow:0 0 0 3px rgba(140,198,63,.2)}
+  .bb-tpl .sw{height:46px;border-radius:8px;margin-bottom:6px;display:flex;align-items:center;justify-content:center;font-size:1.5rem}
+  .bb-tpl small{font-size:.78rem;color:#4a5740;font-weight:600}
+  .bb-upload{display:inline-flex;align-items:center;gap:8px;background:var(--green-700,#416900);color:#fff;font-weight:600;
+    padding:11px 18px;border-radius:12px;cursor:pointer;border:none}
+  .bb-upload:hover{filter:brightness(1.06)}
+  .bb-status{font-size:.86rem;margin-top:8px;min-height:1.1em}
+  .bb-status.ok{color:#3a7d1e}.bb-status.err{color:#c0392b}.bb-status.busy{color:#9a7d12}
+  .bb-zoom{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:.86rem;color:#4a5740}
+  .bb-zoom input{flex:1}
+  .bb-note{font-size:.8rem;color:#6b7763;margin:8px 0 0}
+  .bb-step input[type=text],.bb-step input:not([type]),.bb-step textarea{width:100%;padding:11px 13px;border:1px solid #d8e0c8;
+    border-radius:10px;font:inherit;margin-bottom:10px;background:#fcfdfa}
+  .bb-step input:focus,.bb-step textarea:focus{outline:none;border-color:var(--green-500,#8cc63f);box-shadow:0 0 0 3px rgba(140,198,63,.15)}
+  .bb-step textarea{min-height:70px;resize:vertical;margin-bottom:0}
+  .bb-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .bb-result{font-size:.92rem;border-radius:12px;padding:0}
+  .bb-result.show{padding:12px 14px;margin-top:4px}
+  .bb-result.ok{background:#eaf6df;color:#2f6d18;border:1px solid #bfe09a}
+  .bb-result.err{background:#fdecec;color:#b3261e;border:1px solid #f3c2c2}
+  .bb-privacy{font-size:.78rem;color:#7a8770;text-align:center;margin:2px 0 0}
+  .btn--soft{background:#eef4e2;color:var(--green-700,#416900)}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Bỏ qua tới nội dung</a>
+
+<!-- ============ HEADER ============ -->
+<header class="site-header">
+  <div class="container nav">
+    <a href="/" class="brand" aria-label="Dali Party trang chủ">
+      <svg class="brand-mark" viewBox="0 0 60 86" aria-hidden="true">
+        <defs><radialGradient id="bm" cx="36%" cy="30%" r="72%"><stop offset="0" stop-color="#b2dd6b"/><stop offset="1" stop-color="#6fa82e"/></radialGradient></defs>
+        <path d="M30 4 C45 4 54 18 54 32 C54 50 38 62 31 64 L29 64 C22 62 6 50 6 32 C6 18 15 4 30 4Z" fill="url(#bm)"/>
+        <path d="M28 64l4 0-2 6z" fill="#6fa82e"/>
+        <ellipse cx="22" cy="24" rx="6" ry="9" fill="#fff" opacity=".5"/>
+      </svg>
+      <span class="brand-name"><b>Dali Party</b><span>Bóng bay &amp; Trang trí</span></span>
+    </a>
+    <nav class="nav-links" aria-label="Điều hướng chính">
+      <a href="/">Trang chủ</a>
+      <a href="cua-hang">Cửa hàng</a>
+      <a href="tao-banner" class="active">Tạo banner</a>
+      <a href="diem-ban">Điểm bán</a>
+      <a href="goi-dich-vu">Gói dịch vụ</a>
+      <a href="lien-he">Liên hệ</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" id="cartBtn" aria-label="Giỏ hàng">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/><path d="M2 3h3l2.4 12.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L23 7H6"/></svg>
+        <span class="cart-count" aria-live="polite">0</span>
+      </button>
+      <button class="icon-btn nav-toggle" id="navToggle" aria-label="Mở menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+<div class="mobile-menu" id="mobileMenu">
+  <div class="mm-head">
+    <b style="color:var(--green-600);font-size:1.2rem">Dali Party</b>
+    <button class="icon-btn" id="menuClose" aria-label="Đóng menu"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <a href="/">Trang chủ</a>
+  <a href="cua-hang">Cửa hàng</a>
+  <a href="tao-banner">Tạo banner</a>
+  <a href="diem-ban">Điểm bán</a>
+  <a href="goi-dich-vu">Gói dịch vụ</a>
+  <a href="lien-he">Liên hệ</a>
+</div>
+
+<main id="main">
+<section class="page-hero">
+  <div class="container">
+    <nav class="crumbs" aria-label="Đường dẫn">
+      <a href="/">Trang chủ</a> <span aria-hidden="true">/</span> <span>Tạo banner</span>
+    </nav>
+    <h1>Tự tạo <span class="text-grad">banner sinh nhật</span> cho bé 🎂</h1>
+    <p>Chọn mẫu → tải ảnh bé → AI tự tách nền &amp; ghép cảnh → xem trước ngay. Ưng ý thì gửi yêu cầu, Dali Party sẽ làm bản in chính.</p>
+  </div>
+</section>
+
+<section class="section section--tint">
+  <div class="container">
+    <div class="bb">
+      <div class="bb-preview">
+        <canvas id="bannerCanvas" width="1000" height="1300" aria-label="Xem trước banner"></canvas>
+        <div class="bb-hint" id="bbHint">Chọn mẫu &amp; tải ảnh bé để xem trước…</div>
+      </div>
+      <div class="bb-controls">
+        <div class="bb-step">
+          <h3>1 · Chọn mẫu</h3>
+          <div class="bb-tpls" id="bbTpls"></div>
+        </div>
+        <div class="bb-step">
+          <h3>2 · Ảnh của bé</h3>
+          <label class="bb-upload">📷 Tải ảnh bé<input type="file" id="bbPhoto" accept="image/*" hidden></label>
+          <div class="bb-status" id="bbPhotoStatus"></div>
+          <label class="bb-zoom" id="bbZoomWrap" hidden>Phóng to <input type="range" id="bbZoom" min="0.5" max="2.6" step="0.01" value="1"></label>
+          <p class="bb-note">💡 Kéo ảnh ngay trong khung xem trước để chỉnh vị trí cho vừa.</p>
+        </div>
+        <div class="bb-step">
+          <h3>3 · Thông tin bé</h3>
+          <input id="bbName" placeholder="Tên bé *" maxlength="40" autocomplete="off">
+          <div class="bb-row">
+            <input id="bbDate" placeholder="Ngày (vd 12.03)" maxlength="20" autocomplete="off">
+            <input id="bbAge" placeholder="Tuổi (vd 1)" maxlength="6" autocomplete="off">
+          </div>
+        </div>
+        <div class="bb-step">
+          <h3>4 · Liên hệ &amp; ghi chú</h3>
+          <input id="bbContact" placeholder="SĐT / Zalo để shop liên hệ *" maxlength="40" autocomplete="off">
+          <textarea id="bbNote" placeholder="Ghi chú: màu sắc, chủ đề, yêu cầu thêm…" maxlength="400"></textarea>
+        </div>
+        <button class="btn btn--block btn--lg" id="bbSubmit">Gửi yêu cầu cho shop ✨</button>
+        <button class="btn btn--block btn--soft" id="bbDownload" type="button">⬇ Tải ảnh xem trước</button>
+        <div class="bb-result" id="bbResult" role="status"></div>
+        <p class="bb-privacy">🔒 Ảnh chỉ dùng để tạo banner theo yêu cầu của bạn — lưu an toàn, không chia sẻ.</p>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 60 86" aria-hidden="true"><path d="M30 4 C45 4 54 18 54 32 C54 50 38 62 31 64 L29 64 C22 62 6 50 6 32 C6 18 15 4 30 4Z" fill="#8cc63f"/><path d="M28 64l4 0-2 6z" fill="#6fa82e"/><ellipse cx="22" cy="24" rx="6" ry="9" fill="#fff" opacity=".5"/></svg>
+          <span class="brand-name"><b>Dali Party</b><span>Bóng bay &amp; Trang trí</span></span>
+        </div>
+        <p class="footer-about">Cửa hàng bóng bay &amp; trang trí sự kiện của Công ty Sản xuất &amp; Thương mại Dali. Mang thế giới phép thuật đến mọi bữa tiệc của bạn.</p>
+      </div>
+      <div>
+        <h4>Khám phá</h4>
+        <ul class="footer-links">
+          <li><a href="cua-hang">Cửa hàng</a></li>
+          <li><a href="tao-banner">Tạo banner</a></li>
+          <li><a href="diem-ban">Điểm bán</a></li>
+          <li><a href="goi-dich-vu">Gói dịch vụ</a></li>
+          <li><a href="lien-he">Về chúng tôi</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Hỗ trợ</h4>
+        <ul class="footer-links">
+          <li><a href="lien-he">Liên hệ</a></li>
+          <li><a href="#">Chính sách giao hàng</a></li>
+          <li><a href="#">Chính sách đổi trả</a></li>
+          <li><a href="#">Câu hỏi thường gặp</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Liên hệ</h4>
+        <ul class="footer-links">
+          <li>📍 <span data-cfg="address">123 Đường Hoa Mai, Hà Nội</span></li>
+          <li>📞 <a href="tel:0901234567" data-cfg-tel="hotline"><span data-cfg="hotline">090 123 4567</span></a></li>
+          <li>✉️ <a href="mailto:info@daliparty.vn" data-cfg-mail="email"><span data-cfg="email">info@daliparty.vn</span></a></li>
+          <li>🕒 <span data-cfg="hours">8:00 – 21:00 mỗi ngày</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Dali Party — Công ty Sản xuất &amp; Thương mại Dali. Đã đăng ký bản quyền.</span>
+      <span>Thiết kế với 💚 cho những bữa tiệc rực rỡ</span>
+      <a href="admin" style="opacity:.6;color:inherit" title="Trang quản trị">Quản trị</a>
+    </div>
+  </div>
+</footer>
+
+<div class="overlay" id="overlay"></div>
+<button class="to-top" id="toTop" aria-label="Lên đầu trang">
+  <svg viewBox="0 0 60 86" width="34" aria-hidden="true"><path d="M30 4 C45 4 54 18 54 32 C54 50 38 62 31 64 L29 64 C22 62 6 50 6 32 C6 18 15 4 30 4Z" fill="#8cc63f"/><path d="M28 64l4 0-2 6z" fill="#6fa82e"/><path d="M24 30l6-7 6 7" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+
+<script src="assets/js/shop-data.js?v=1"></script>
+<script src="assets/js/main.js?v=16"></script>
+<script src="assets/js/banner-builder.js?v=1"></script>
+</body>
+</html>
