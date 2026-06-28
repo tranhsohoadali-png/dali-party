@@ -25,7 +25,7 @@ echo "[4/8] pip install requirements (heavy: rembg + onnxruntime, a few minutes)
 
 echo "[5/8] chown + warm u2net_human_seg model"
 chown -R www-data:www-data /opt/dali-api/models /opt/dali-api/cache /var/www/dali-banner-data /var/www/dali-banner-data/mockups
-sudo -u www-data env U2NET_HOME=/opt/dali-api/models "$VENV/bin/python" \
+sudo -u www-data env U2NET_HOME=/opt/dali-api/models NUMBA_CACHE_DIR=/opt/dali-api/cache "$VENV/bin/python" \
   -c "from rembg import new_session; new_session('u2net_human_seg'); print('model ready')" \
   || echo "WARN: model warm failed (will lazy-load on first request)"
 
