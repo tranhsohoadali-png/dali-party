@@ -860,6 +860,31 @@
   function mkRectFrom(a, b) {
     return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
   }
+  /* AI tự dò khuôn mặt mẫu trong thiết kế → đặt "ô mặt" tự động (dùng face-circle.js).
+     Shop khỏi kéo tay; vẫn kéo lại được nếu muốn. Không thấy mặt → để kéo tay. */
+  function mkAutoDetect(file) {
+    if (!window.detectFaceCircle || !file) return;
+    var info = $("mkHoleInfo"), theFile = file;
+    if (info) info.textContent = "🤖 Đang dò khuôn mặt bằng AI…";
+    window.detectFaceCircle(file, { size: 256, padding: 0.85 }).then(function (fr) {
+      var cur = $("mkFile").files && $("mkFile").files[0];
+      if (mkImg == null || cur !== theFile) return; // ảnh đã đổi trong lúc dò
+      if (fr && fr.found && fr.circle) {
+        var c = fr.circle, cv = mkCanvas();
+        var x = Math.max(0, (c.cx - c.r) * mkScale), y = Math.max(0, (c.cy - c.r) * mkScale);
+        var s = c.r * 2 * mkScale;
+        mkHole = { x: x, y: y, w: Math.min(s, cv.width - x), h: Math.min(s, cv.height - y) };
+        var rc = $("mkRound"); if (rc) rc.checked = true;
+        var ov = $("mkOverlay"); if (ov) ov.hidden = false;
+        mkPositionOverlay(mkHole);
+        if (info) info.textContent = "🤖 AI đã đặt ô mặt tự động (" + (fr.engine || "ai") + "). Kéo để chỉnh nếu cần.";
+      } else if (info) {
+        info.textContent = "AI chưa thấy mặt rõ — hãy kéo chuột trên ảnh để khoanh ô.";
+      }
+    }).catch(function () {
+      if (info) info.textContent = "Kéo chuột trên ảnh để khoanh vùng đặt ảnh/khuôn mặt.";
+    });
+  }
   function mkLoadFile(file) {
     if (!file) return;
     if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) { $("mkErr").textContent = "Ảnh phải là PNG, JPG hoặc WebP."; return; }
@@ -880,6 +905,7 @@
         var ov = $("mkOverlay"); if (ov) ov.hidden = true;
         var ph = $("mkPlaceholder"); if (ph) ph.hidden = true;
         mkUpdateHoleInfo();
+        mkAutoDetect(file);
       };
       img.onerror = function () { $("mkErr").textContent = "Không tải được ảnh đã chọn."; };
       img.src = ev.target.result;
