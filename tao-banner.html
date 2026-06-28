@@ -66,6 +66,44 @@
   .bb-result.err{background:#fdecec;color:#b3261e;border:1px solid #f3c2c2}
   .bb-privacy{font-size:.78rem;color:#7a8770;text-align:center;margin:2px 0 0}
   .btn--soft{background:#eef4e2;color:var(--green-700,#416900)}
+  /* ---- Đặt cọc (deposit) modal + start-gate ---- */
+  .dep-ov{position:fixed;inset:0;background:rgba(20,30,16,.5);backdrop-filter:blur(3px);z-index:200;
+    display:none;padding:18px;overflow-y:auto}
+  .dep-ov.open{display:grid;place-items:start center}
+  .dep-modal{width:min(440px,100%);background:#fff;border-radius:18px;box-shadow:0 18px 50px rgba(20,40,0,.3);
+    margin:clamp(12px,5vh,48px) 0;overflow:hidden}
+  .dep-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;
+    border-bottom:1px solid #e9eede}
+  .dep-head h3{font-size:1.18rem;color:var(--green-700,#416900);margin:0}
+  .dep-x{width:36px;height:36px;border-radius:50%;border:0;background:none;font-size:1.4rem;color:#6b7763;
+    cursor:pointer;line-height:1}
+  .dep-x:hover{background:#eef4e2;color:var(--green-700,#416900)}
+  .dep-body{padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+  .dep-sum{background:#f6f9ef;border:1px solid #e1ead0;border-radius:12px;padding:11px 14px;font-size:.88rem;color:#43523a}
+  .dep-sum b{color:var(--green-700,#416900)}
+  .dep-amt-big{font-size:1.7rem;font-weight:800;color:var(--green-700,#416900);text-align:center;line-height:1.1}
+  .dep-frame{font-size:.82rem;color:#5d6b52;text-align:center;background:#fff7e6;border:1px solid #ffe0a3;
+    border-radius:10px;padding:9px 12px;line-height:1.45}
+  .dep-qr{display:block;width:240px;max-width:100%;height:auto;margin:2px auto;border-radius:12px;
+    border:1px solid #e1ead0;background:#fff}
+  .dep-rows{display:flex;flex-direction:column;gap:7px}
+  .dep-kv{display:flex;align-items:center;gap:8px;font-size:.88rem}
+  .dep-kv .k{color:#7a8770;flex:0 0 86px}
+  .dep-kv .v{font-weight:700;color:#2f3a27;word-break:break-word;flex:1 1 auto}
+  .dep-copy{flex:0 0 auto;border:1px solid #cdd9b8;background:#f3f8ea;color:var(--green-700,#416900);
+    font-weight:700;font-size:.76rem;padding:5px 9px;border-radius:8px;cursor:pointer}
+  .dep-copy:hover{background:#e7f1d6}
+  .dep-note-shop{font-size:.82rem;color:#6b7763;line-height:1.5;background:#fafaf3;border:1px dashed #d8e0c8;
+    border-radius:10px;padding:10px 12px}
+  .dep-proof{font-size:.82rem;color:#5d6b52}
+  .dep-proof input{display:block;margin-top:5px;font-size:.82rem}
+  .dep-foot{display:flex;flex-direction:column;gap:9px;padding:6px 20px 20px}
+  .dep-msg{font-size:.86rem;border-radius:10px;padding:0;text-align:center}
+  .dep-msg.show{padding:10px 12px}
+  .dep-msg.ok{background:#eaf6df;color:#2f6d18;border:1px solid #bfe09a}
+  .dep-msg.err{background:#fdecec;color:#b3261e;border:1px solid #f3c2c2}
+  .dep-fallback{text-align:center;font-size:.9rem;color:#43523a;line-height:1.55}
+  .dep-fallback a{color:var(--green-700,#416900);font-weight:700}
 </style>
 </head>
 <body>
@@ -159,6 +197,7 @@
           <textarea id="bbNote" placeholder="Ghi chú: màu sắc, chủ đề, yêu cầu thêm…" maxlength="400"></textarea>
         </div>
         <button class="btn btn--block btn--lg" id="bbSubmit">Gửi yêu cầu cho shop ✨</button>
+        <button class="btn btn--block btn--soft" id="bbSubmitSoft" type="button" hidden>Gửi yêu cầu (shop liên hệ sau)</button>
         <button class="btn btn--block btn--soft" id="bbDownload" type="button">⬇ Tải ảnh xem trước</button>
         <div class="bb-result" id="bbResult" role="status"></div>
         <p class="bb-privacy">🔒 Ảnh chỉ dùng để tạo banner theo yêu cầu của bạn — lưu an toàn, không chia sẻ.</p>
@@ -167,6 +206,18 @@
   </div>
 </section>
 </main>
+
+<!-- ============ ĐẶT CỌC (deposit) MODAL ============ -->
+<div class="dep-ov" id="depOverlay" role="dialog" aria-modal="true" aria-labelledby="depTitle">
+  <div class="dep-modal">
+    <div class="dep-head">
+      <h3 id="depTitle">💵 Đặt cọc giữ chỗ</h3>
+      <button class="dep-x" id="depClose" type="button" aria-label="Đóng">×</button>
+    </div>
+    <div class="dep-body" id="depBody"><!-- filled by banner-builder.js --></div>
+    <div class="dep-foot" id="depFoot"><!-- filled by banner-builder.js --></div>
+  </div>
+</div>
 
 <!-- ============ FOOTER ============ -->
 <footer class="site-footer">
@@ -224,6 +275,6 @@
 <script src="assets/js/shop-data.js?v=1"></script>
 <script src="assets/js/main.js?v=16"></script>
 <script src="assets/js/face-circle.js?v=2"></script>
-<script src="assets/js/banner-builder.js?v=5"></script>
+<script src="assets/js/banner-builder.js?v=6"></script>
 </body>
 </html>

@@ -19,6 +19,13 @@
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { return String(s == null ? "" : s); }
+  // HTML-escape for values injected via innerHTML (deposit modal). `esc` above is a
+  // no-op stringifier kept for canvas fillText; do NOT use it for markup.
+  function escH(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
 
   /* ============================================================
      MẪU (TEMPLATES)
@@ -78,7 +85,11 @@
     slots: [],            // 1 entry / lỗ của mẫu hiện tại — xem makeSlots()
     active: -1,           // chỉ số ô đang chỉnh (-1 = chưa chọn)
     name: "", date: "", age: "",
-    sent: false
+    sent: false,
+    sentId: null,         // mã đơn trả về sau khi gửi (dùng cho nội dung CK)
+    cfg: null,            // cấu hình đặt cọc từ /api/banner/config (null = chưa tải / tắt)
+    depositOk: false,     // khách đã bấm "Tôi đã chuyển cọc" (gate-at-start mở khoá)
+    depositShot: null     // ảnh CK khách đính kèm ở bước cọc (gate-at-start)
   };
 
   // Danh sách lỗ của 1 mẫu: ảnh nền (holes[]) hoặc mẫu vẽ (1 lỗ = tpl.hole | SLOT).
@@ -554,7 +565,9 @@
         }
         var sub = slot.status
           ? '<span class="bb-slot-sub ' + (slot.statusCls || "") + '">' + esc(slot.status) + "</span>"
-          : '<span class="bb-slot-sub">' + (slot.img ? "✓ đã có ảnh" : "chưa có ảnh") + "</span>";
+          : '<span class="bb-slot-sub">' + (slot.img ? "✓ đã có ảnh"
+              : (hole && hole.round ? "chưa có ảnh — AI sẽ tự cắt mặt"
+                                    : "chưa có ảnh — dùng nguyên ảnh (nên chọn ảnh đã chỉnh sẵn)")) + "</span>";
         row.innerHTML =
           '<span class="bb-thumb" style="' + thumbBg + '">' + (slot.img ? "" : "📷") + "</span>" +
           '<span class="bb-slot-body">' +
@@ -688,49 +701,104 @@
   function result(msg, cls) { var el = $("bbResult"); el.textContent = msg; el.className = "bb-result show " + cls; }
   function canvasBlob() { return new Promise(function (res) { cv.toBlob(function (b) { res(b); }, "image/png", 0.92); }); }
 
-  $("bbSubmit").addEventListener("click", async function () {
-    if (state.sent) return;
+  /* Kiểm tra dữ liệu tối thiểu trước khi gửi (tên + ≥1 ảnh + liên hệ). */
+  function validateForm() {
     var name = $("bbName").value.trim(), contact = $("bbContact").value.trim();
-    if (!name) { result("Vui lòng nhập tên bé.", "err"); $("bbName").focus(); return; }
-    // cần ÍT NHẤT một ô có ảnh
+    if (!name) { result("Vui lòng nhập tên bé.", "err"); $("bbName").focus(); return null; }
     var hasPhoto = false, k;
     for (k = 0; k < state.slots.length; k++) { if (state.slots[k] && state.slots[k].photoBlob) { hasPhoto = true; break; } }
-    if (!hasPhoto) { result("Vui lòng tải ít nhất một ảnh bé.", "err"); return; }
-    if (!contact) { result("Vui lòng nhập SĐT/Zalo để shop liên hệ.", "err"); $("bbContact").focus(); return; }
-    this.disabled = true; this.textContent = "Đang gửi…";
-    try {
-      var comp = await canvasBlob();
-      var fd = new FormData();
-      fd.append("name", name);
-      fd.append("birthday", $("bbDate").value.trim());
-      fd.append("age", $("bbAge").value.trim());
-      fd.append("template", state.tpl.id);
-      fd.append("mockup_id", state.tpl.id);
-      fd.append("mockup_name", state.tpl.name || "");
-      fd.append("contact", contact);
-      fd.append("note", $("bbNote").value.trim());
-      // mỗi ô có ảnh → append "photos" (ẢNH GỐC) theo thứ tự + thu chỉ số lỗ (1-based)
-      var slotsArr = [], si;
-      for (si = 0; si < state.slots.length; si++) {
-        var sl = state.slots[si];
-        if (sl && sl.photoBlob) {
-          fd.append("photos", sl.photoBlob, "photo-" + (si + 1) + ".png");
-          slotsArr.push(si + 1);
-        }
+    if (!hasPhoto) { result("Vui lòng tải ít nhất một ảnh bé.", "err"); return null; }
+    // chống đua: ô đã có ảnh nhưng AI chưa dựng xong (slot.img null / đang "busy")
+    // → composite sẽ thiếu mặt vừa tải. Bắt khách đợi 1-2 giây rồi gửi lại.
+    for (k = 0; k < state.slots.length; k++) {
+      var sb = state.slots[k];
+      if (sb && sb.photoBlob && (!sb.img || sb.statusCls === "busy")) {
+        result("Đang tự cắt mặt bé, chờ 1–2 giây rồi gửi lại nhé.", "err"); return null;
       }
-      fd.append("photoSlots", JSON.stringify(slotsArr));
-      if (comp) fd.append("composite", comp, "composite.png");
-      var r = await fetch("/api/banner/request", { method: "POST", body: fd });
-      if (!r.ok) throw new Error("req " + r.status);
-      var j = await r.json();
-      state.sent = true;
-      result("🎉 Đã gửi yêu cầu (mã " + (j.id || "") + ")! Dali Party sẽ liên hệ bạn qua " + contact + " để hoàn thiện banner.", "ok");
-      this.textContent = "Đã gửi ✓";
-    } catch (err) {
-      result("Gửi chưa được (có thể máy chủ đang bận). Bạn thử lại, hoặc tải ảnh xem trước rồi gửi shop qua Zalo nhé.", "err");
-      this.disabled = false; this.textContent = "Gửi yêu cầu cho shop ✨";
     }
+    if (!contact) { result("Vui lòng nhập SĐT/Zalo để shop liên hệ.", "err"); $("bbContact").focus(); return null; }
+    return { name: name, contact: contact };
+  }
+
+  /* Gửi yêu cầu lên backend. opts.deposit (tuỳ chọn) = {claimed, ref, blob}
+     để đính kèm thông tin đã chuyển cọc. Trả về Promise<json|throw>. */
+  async function sendRequest(form, opts) {
+    opts = opts || {};
+    var comp = await canvasBlob();
+    var fd = new FormData();
+    fd.append("name", form.name);
+    fd.append("birthday", $("bbDate").value.trim());
+    fd.append("age", $("bbAge").value.trim());
+    fd.append("template", state.tpl.id);
+    fd.append("mockup_id", state.tpl.id);
+    fd.append("mockup_name", state.tpl.name || "");
+    fd.append("contact", form.contact);
+    fd.append("note", $("bbNote").value.trim());
+    // mỗi ô có ảnh → append "photos" (ẢNH GỐC) theo thứ tự + thu chỉ số lỗ (1-based)
+    var slotsArr = [], si;
+    for (si = 0; si < state.slots.length; si++) {
+      var sl = state.slots[si];
+      if (sl && sl.photoBlob) {
+        fd.append("photos", sl.photoBlob, "photo-" + (si + 1) + ".png");
+        slotsArr.push(si + 1);
+      }
+    }
+    fd.append("photoSlots", JSON.stringify(slotsArr));
+    if (comp) fd.append("composite", comp, "composite.png");
+    if (opts.deposit) {
+      fd.append("depositClaimed", opts.deposit.claimed ? "1" : "0");
+      if (opts.deposit.ref) fd.append("depositRef", opts.deposit.ref);
+      if (opts.deposit.blob) fd.append("deposit", opts.deposit.blob, "deposit.png");
+    }
+    var r = await fetch("/api/banner/request", { method: "POST", body: fd });
+    if (!r.ok) throw new Error("req " + r.status);
+    return r.json();
+  }
+
+  /* Hoàn tất sau khi gửi thành công: khoá nút + báo cho khách. */
+  function onSent(j, contact, claimedDeposit) {
+    state.sent = true;
+    var extra = claimedDeposit ? " Cọc của bạn đã được ghi nhận — shop sẽ xác nhận sớm." : "";
+    result("🎉 Đã gửi yêu cầu (mã " + (j.id || "") + ")! Dali Party sẽ liên hệ bạn qua " + contact + " để hoàn thiện banner." + extra, "ok");
+    var b = $("bbSubmit"); b.disabled = true; b.textContent = "Đã gửi ✓";
+    var soft = $("bbSubmitSoft"); if (soft) soft.hidden = true;
+  }
+
+  // gửi yêu cầu (nút chính khi tắt cọc / đã qua gate-at-start, hoặc nút phụ "shop liên hệ sau").
+  // Nếu khách đã xác nhận cọc ở bước đầu (gate-at-start) → đính kèm thông tin cọc.
+  function submitNoDeposit() {
+    if (state.sent) return;
+    var form = validateForm(); if (!form) return;
+    var b = $("bbSubmit"); b.disabled = true; b.textContent = "Đang gửi…";
+    var soft = $("bbSubmitSoft"); if (soft) soft.disabled = true;
+    var dep = null, claimed = false;
+    if (state.depositOk) {  // chỉ bật ở luồng gate-at-start sau khi khách bấm "đã chuyển"
+      claimed = true;
+      dep = { deposit: { claimed: true, ref: depositRef(), blob: state.depositShot || null } };
+    }
+    sendRequest(form, dep).then(function (j) {
+      state.sentId = j.id || null;
+      onSent(j, form.contact, claimed);
+    }).catch(function () {
+      result("Gửi chưa được (có thể máy chủ đang bận). Bạn thử lại, hoặc tải ảnh xem trước rồi gửi shop qua Zalo nhé.", "err");
+      b.disabled = false; b.textContent = "Gửi yêu cầu cho shop ✨";
+      if (soft) soft.disabled = false;
+    });
+  }
+
+  $("bbSubmit").addEventListener("click", function () {
+    if (state.sent) return;
+    var dep = state.cfg;
+    // Cọc bật + chặn-khi-gửi + chưa cọc → mở modal cọc (gửi kèm cọc bên trong).
+    if (dep && dep.depositEnabled && dep.depositGate !== "start" && !state.depositOk) {
+      var form = validateForm(); if (!form) return;
+      openDeposit("submit", form);
+      return;
+    }
+    submitNoDeposit();
   });
+  var bbSoft = $("bbSubmitSoft");
+  if (bbSoft) bbSoft.addEventListener("click", submitNoDeposit);
 
   $("bbDownload").addEventListener("click", async function () {
     var b = await canvasBlob(); if (!b) return;
@@ -739,6 +807,183 @@
     a.download = "banner-" + (state.name || "dali") + ".png";
     document.body.appendChild(a); a.click(); a.remove();
   });
+
+  /* ============================================================
+     ĐẶT CỌC (deposit) — cấu hình từ máy chủ + modal chuyển khoản thủ công.
+     Chỉ là VietQR/Momo: KHÔNG thẻ, KHÔNG cổng thanh toán, KHÔNG tự trừ tiền.
+     Khách tự chuyển → bấm "Tôi đã chuyển cọc" → shop xác nhận tay.
+     ============================================================ */
+  function vnd(n) { return (Number(n) || 0).toLocaleString("vi-VN") + "₫"; }
+  // Mã chuyển khoản gợi ý: ưu tiên mã đơn (sau khi gửi), nếu chưa có thì theo SĐT.
+  function depositRef() {
+    if (state.sentId) return "DALI-" + state.sentId;
+    var c = ($("bbContact").value || "").replace(/[^0-9a-zA-Z]/g, "").slice(-8);
+    return "DALI-" + (c || "MOI");
+  }
+  // URL ảnh VietQR (API ảnh công khai, miễn phí). Trả "" nếu thiếu cấu hình.
+  function vietqrUrl(cfg, amount, addInfo) {
+    if (!cfg.bankCode || !cfg.bankAccount) return "";
+    var u = "https://img.vietqr.io/image/" + encodeURIComponent(cfg.bankCode) + "-" +
+      encodeURIComponent(cfg.bankAccount) + "-compact2.png";
+    var qs = [];
+    if (amount) qs.push("amount=" + encodeURIComponent(amount));
+    if (addInfo) qs.push("addInfo=" + encodeURIComponent(addInfo));
+    if (cfg.accountName) qs.push("accountName=" + encodeURIComponent(cfg.accountName));
+    return qs.length ? (u + "?" + qs.join("&")) : u;
+  }
+  function depOverlay() { return $("depOverlay"); }
+  function closeDeposit() { var o = depOverlay(); if (o) o.classList.remove("open"); }
+  function depMsg(el, msg, cls) { if (!el) return; el.textContent = msg || ""; el.className = "dep-msg" + (cls ? " show " + cls : ""); }
+  // nút copy mã chuyển khoản
+  function copyText(txt, btn) {
+    function done() { if (btn) { var t = btn.textContent; btn.textContent = "Đã chép ✓"; setTimeout(function () { btn.textContent = t; }, 1400); } }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(done, function () {});
+    } else {
+      try { var ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); done(); } catch (e) {}
+    }
+  }
+
+  /* Mở modal cọc.
+     mode "submit": gửi yêu cầu KÈM cọc khi khách bấm "Tôi đã chuyển cọc".
+     mode "start" : chỉ MỞ KHOÁ trình tạo (chưa gửi gì) — gửi ở bước cuối như thường. */
+  function openDeposit(mode, form) {
+    var cfg = state.cfg; if (!cfg) return;
+    var o = depOverlay(); if (!o) return;
+    var body = $("depBody"), foot = $("depFoot");
+    var amt = Number(cfg.depositAmount) || 0;
+    var ref = depositRef();
+    var configured = (cfg.method !== "manual") &&
+      ((cfg.method === "momo" && cfg.momoPhone) || (cfg.bankCode && cfg.bankAccount));
+
+    var html = "";
+    // tóm tắt đơn
+    var nSlots = 0, kk; for (kk = 0; kk < state.slots.length; kk++) { if (state.slots[kk] && state.slots[kk].photoBlob) nSlots++; }
+    html += '<div class="dep-sum">Mẫu: <b>' + escH(state.tpl.name || "—") + "</b> · Số ảnh: <b>" + nSlots + "</b></div>";
+
+    if (configured) {
+      if (amt) html += '<div class="dep-amt-big">' + vnd(amt) + "</div>";
+      var frame = cfg.note ? escH(cfg.note)
+        : "Cọc được TRỪ vào tổng tiền banner, HOÀN LẠI nếu shop không nhận làm.";
+      html += '<div class="dep-frame">' + frame + "</div>";
+
+      if (cfg.method === "momo") {
+        html += '<div class="dep-rows">' +
+          '<div class="dep-kv"><span class="k">Ví Momo</span><span class="v">' + escH(cfg.momoPhone) + "</span>" +
+            '<button class="dep-copy" type="button" data-copy="' + escH(cfg.momoPhone) + '">Chép</button></div>' +
+          (cfg.accountName ? '<div class="dep-kv"><span class="k">Tên</span><span class="v">' + escH(cfg.accountName) + "</span></div>" : "") +
+          '<div class="dep-kv"><span class="k">Nội dung</span><span class="v">' + escH(ref) + "</span>" +
+            '<button class="dep-copy" type="button" data-copy="' + escH(ref) + '">Chép</button></div>' +
+        "</div>";
+      } else {
+        var qr = vietqrUrl(cfg, amt, ref);
+        if (qr) html += '<img class="dep-qr" src="' + escH(qr) + '" alt="Mã VietQR chuyển cọc" loading="lazy">';
+        html += '<div class="dep-rows">' +
+          '<div class="dep-kv"><span class="k">Ngân hàng</span><span class="v">' + escH(cfg.bankCode) + "</span></div>" +
+          '<div class="dep-kv"><span class="k">Số TK</span><span class="v">' + escH(cfg.bankAccount) + "</span>" +
+            '<button class="dep-copy" type="button" data-copy="' + escH(cfg.bankAccount) + '">Chép</button></div>' +
+          (cfg.accountName ? '<div class="dep-kv"><span class="k">Chủ TK</span><span class="v">' + escH(cfg.accountName) + "</span></div>" : "") +
+          '<div class="dep-kv"><span class="k">Nội dung</span><span class="v">' + escH(ref) + "</span>" +
+            '<button class="dep-copy" type="button" data-copy="' + escH(ref) + '">Chép</button></div>' +
+        "</div>";
+      }
+      html += '<label class="dep-proof">Ảnh chụp màn hình đã chuyển (tuỳ chọn):' +
+        '<input type="file" id="depShot" accept="image/*"></label>';
+    } else {
+      // chưa cấu hình ngân hàng → fallback liên hệ shop
+      var zalo = cfg.shopZalo || "";
+      html += '<div class="dep-fallback">Vui lòng <b>liên hệ shop để đặt cọc</b>.' +
+        (zalo ? '<br>Zalo/SĐT: <a href="tel:' + escH(zalo.replace(/[^0-9+]/g, "")) + '">' + escH(zalo) + "</a>" : "") +
+        "<br>Bạn vẫn có thể tải ảnh xem trước rồi gửi cho shop nhé.</div>";
+    }
+    html += '<div class="dep-msg" id="depMsg" role="status"></div>';
+    body.innerHTML = html;
+
+    // chân modal — nút hành động tuỳ mode
+    var fhtml = "";
+    if (configured) {
+      fhtml += '<button class="btn btn--block btn--lg" id="depConfirm" type="button">Tôi đã chuyển cọc ✓</button>';
+    }
+    if (mode === "submit") {
+      fhtml += '<button class="btn btn--block btn--soft" id="depLater" type="button">Gửi yêu cầu (shop liên hệ sau)</button>';
+    } else if (configured) {
+      fhtml += '<button class="btn btn--block btn--soft" id="depLater" type="button">Để sau, xem mẫu trước</button>';
+    } else {
+      fhtml += '<button class="btn btn--block btn--soft" id="depLater" type="button">Tiếp tục</button>';
+    }
+    foot.innerHTML = fhtml;
+
+    // chép nội dung
+    [].forEach.call(body.querySelectorAll(".dep-copy"), function (btn) {
+      btn.addEventListener("click", function () { copyText(btn.getAttribute("data-copy"), btn); });
+    });
+
+    var msgEl = $("depMsg");
+    var confirmBtn = $("depConfirm");
+    if (confirmBtn) confirmBtn.addEventListener("click", function () {
+      var shotEl = $("depShot");
+      var blob = (shotEl && shotEl.files && shotEl.files[0]) ? shotEl.files[0] : null;
+      if (mode === "submit") {
+        // GỬI yêu cầu kèm cọc
+        confirmBtn.disabled = true; confirmBtn.textContent = "Đang gửi…";
+        sendRequest(form, { deposit: { claimed: true, ref: ref, blob: blob } }).then(function (j) {
+          state.sentId = j.id || null;
+          closeDeposit();
+          onSent(j, form.contact, true);
+        }).catch(function () {
+          depMsg(msgEl, "Gửi chưa được — máy chủ đang bận. Bạn thử lại nhé.", "err");
+          confirmBtn.disabled = false; confirmBtn.textContent = "Tôi đã chuyển cọc ✓";
+        });
+      } else {
+        // gate-at-start: mở khoá builder (chưa gửi). Lưu ảnh CK để đính kèm khi gửi.
+        state.depositOk = true;
+        if (blob) state.depositShot = blob;
+        closeDeposit();
+        result("✅ Đã ghi nhận bạn sẽ chuyển cọc. Mời chọn mẫu & tải ảnh bé.", "ok");
+      }
+    });
+    var laterBtn = $("depLater");
+    if (laterBtn) laterBtn.addEventListener("click", function () {
+      if (mode === "submit") {
+        // nút mềm: gửi yêu cầu KHÔNG cọc (vẫn giữ lead)
+        closeDeposit();
+        submitNoDeposit();
+      } else {
+        // gate-at-start "để sau": vẫn mở khoá để khách trải nghiệm (giữ funnel)
+        state.depositOk = true;
+        closeDeposit();
+      }
+    });
+
+    o.classList.add("open");
+  }
+
+  // đóng modal: nút X / bấm nền
+  (function wireDepClose() {
+    var x = $("depClose"); if (x) x.addEventListener("click", closeDeposit);
+    var o = depOverlay();
+    if (o) o.addEventListener("click", function (e) { if (e.target === o) closeDeposit(); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeDeposit(); });
+  })();
+
+  // nạp cấu hình cọc; nếu chặn-từ-đầu thì mở modal ngay
+  (function loadConfig() {
+    fetch("/api/banner/config", { headers: { Accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (c) {
+        if (!c || !c.depositEnabled) return; // tắt cọc → giữ luồng gửi thường
+        state.cfg = c;
+        var soft = $("bbSubmitSoft");
+        if (c.depositGate === "start") {
+          // chặn từ đầu: hiện modal cọc trước khi khách dùng builder
+          openDeposit("start", null);
+        } else {
+          // chặn khi gửi: lộ nút mềm "shop liên hệ sau" để không mất lead
+          if (soft) soft.hidden = false;
+        }
+      })
+      .catch(function () { /* backend down → im lặng, luồng gửi thường vẫn chạy */ });
+  })();
 
   /* ---------- khởi tạo ---------- */
   makeSlots(state.tpl);

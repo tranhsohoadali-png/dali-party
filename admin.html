@@ -272,6 +272,19 @@
   .bn-foot select.st-sel { margin-left: auto; }
   .bn-empty { text-align: center; color: var(--muted); font-weight: 600; padding: 44px 14px; }
   .bn-empty.err { color: #b25e00; }
+  /* deposit (đặt cọc) row on a banner card */
+  .bn-dep { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px;
+    border-top: 1px dashed var(--line); background: #fffdf6; }
+  .bn-dep .dep-st { display: inline-flex; align-items: center; gap: 5px; font-size: .76rem; font-weight: 800;
+    padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+  .bn-dep .dep-st.is-none { background: #f1f1f1; color: #6b6b6b; }
+  .bn-dep .dep-st.is-claimed { background: #fff3df; color: #b25e00; }
+  .bn-dep .dep-st.is-confirmed { background: var(--green-100); color: var(--green-700); }
+  .bn-dep .dep-amt { font-size: .78rem; font-weight: 700; color: var(--ink-2); }
+  .bn-dep .dep-proof { font-size: .74rem; font-weight: 700; color: var(--green-700); background: var(--green-100);
+    padding: 3px 9px; border-radius: 999px; }
+  .bn-dep .dep-spacer { flex: 1 1 auto; }
+  .bn-dep .mini-btn.ok:hover { border-color: var(--green-500); color: var(--green-700); background: var(--green-50); }
 
   /* ---- Kho mockup (mockup warehouse) — upload form + hole picker + saved grid ---- */
   .mk-form-grid { display: grid; grid-template-columns: 1fr minmax(0, 380px); gap: 22px; align-items: start; }
@@ -281,8 +294,22 @@
   .mk-hint { font-size: .82rem; color: var(--muted); font-weight: 600; min-height: 1.2em; }
   .mk-right { display: flex; flex-direction: column; gap: 8px; }
   .mk-canvas-lbl { font-weight: 600; font-size: .9rem; color: var(--ink-2); }
-  .mk-stage { position: relative; width: 100%; max-width: 380px; border: 1.5px dashed var(--line);
-    border-radius: var(--radius); background: var(--green-50); overflow: hidden; touch-action: none; }
+  /* Zoom toolbar (above the stage) */
+  .mk-zoombar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .mk-zoombar .mk-zbtn { flex: 0 0 auto; width: 30px; height: 30px; border: 1px solid var(--line);
+    background: #fff; border-radius: 8px; font-size: 1.05rem; font-weight: 800; line-height: 1; cursor: pointer;
+    color: var(--green-700); display: grid; place-items: center; }
+  .mk-zoombar .mk-zbtn:hover { background: var(--green-100); }
+  .mk-zoombar input[type="range"] { flex: 1 1 90px; min-width: 80px; accent-color: var(--green-700); }
+  .mk-zoombar .mk-zfit { flex: 0 0 auto; border: 1px solid var(--line); background: #fff; border-radius: 8px;
+    padding: 4px 10px; font-size: .8rem; font-weight: 700; cursor: pointer; color: var(--ink-2); }
+  .mk-zoombar .mk-zfit:hover { background: var(--green-100); color: var(--green-700); }
+  .mk-zoombar .mk-zval { flex: 0 0 auto; font-size: .8rem; font-weight: 700; color: var(--muted);
+    min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+  /* Stage = scroll viewport; the panned content (.mk-pan) holds canvas + overlay together */
+  .mk-stage { position: relative; width: 100%; max-width: 100%; overflow: auto; border: 1.5px dashed var(--line);
+    border-radius: var(--radius); background: var(--green-50); touch-action: none; -webkit-overflow-scrolling: touch; }
+  .mk-pan { position: relative; width: 100%; }
   .mk-stage canvas { display: block; width: 100%; height: auto; cursor: crosshair; }
   .mk-overlay-wrap { position: absolute; inset: 0; pointer-events: none; }
   .mk-overlay { position: absolute; border: 2px solid var(--green-700); background: rgba(111,168,46,.18);
@@ -295,7 +322,7 @@
     display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
   .mk-overlay.is-active .mk-num { background: #8cc63f; color: #1c3000; }
   .mk-placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
-    color: var(--muted); font-size: .84rem; font-weight: 600; padding: 20px; pointer-events: none; }
+    color: var(--muted); font-size: .84rem; font-weight: 600; padding: 20px; pointer-events: none; z-index: 2; }
   /* holes list (multi-hole editor) */
   .mk-hole-list { display: flex; flex-direction: column; gap: 6px; }
   .mk-hole-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line);
@@ -310,6 +337,9 @@
     padding: 3px 7px; font-size: .82rem; cursor: pointer; line-height: 1; }
   .mk-hole-row .mk-iconbtn.on { background: var(--green-700); color: #fff; border-color: var(--green-700); }
   .mk-hole-row .mk-iconbtn.danger:hover { background: #fbe7e7; border-color: #d88; }
+  .mk-hole-row .mk-nudge { flex: 0 0 auto; display: inline-flex; gap: 2px; }
+  .mk-hole-row .mk-iconbtn.nudge { padding: 3px 5px; min-width: 22px; font-weight: 700; color: var(--green-700); }
+  .mk-hole-row .mk-iconbtn.nudge:hover { background: var(--green-100); border-color: var(--green-200); }
 
   .mk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
   .mk-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius);
@@ -629,9 +659,19 @@
             </div>
             <div class="mk-right">
               <label class="mk-canvas-lbl">Khoanh vùng đặt ảnh / khuôn mặt (kéo nhiều ô)</label>
+              <div class="mk-zoombar" role="group" aria-label="Phóng to ảnh">
+                <button class="mk-zbtn" type="button" id="mkZoomOut" title="Thu nhỏ" aria-label="Thu nhỏ">−</button>
+                <input type="range" id="mkZoom" min="1" max="4" step="0.25" value="1" aria-label="Mức phóng to">
+                <button class="mk-zbtn" type="button" id="mkZoomIn" title="Phóng to" aria-label="Phóng to">+</button>
+                <span class="mk-zval" id="mkZoomVal">1×</span>
+                <button class="mk-zfit" type="button" id="mkZoomFit" title="Vừa khít khung">Vừa khít</button>
+              </div>
+              <p class="mk-hint" style="min-height:auto;margin:0">Phóng to để khoanh ô nhỏ chính xác hơn (lăn chuột + Ctrl, hoặc kéo thanh trượt).</p>
               <div class="mk-stage" id="mkStage">
-                <canvas id="mkCanvas" width="360" height="240"></canvas>
-                <div class="mk-overlay-wrap" id="mkOverlay"></div>
+                <div class="mk-pan" id="mkPan">
+                  <canvas id="mkCanvas" width="360" height="240"></canvas>
+                  <div class="mk-overlay-wrap" id="mkOverlay"></div>
+                </div>
                 <div class="mk-placeholder" id="mkPlaceholder">Chọn ảnh để bắt đầu — rồi kéo chuột để khoanh nhiều vùng.</div>
               </div>
             </div>
@@ -747,6 +787,55 @@
           <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
             <button class="btn" type="submit">💾 Lưu cài đặt</button>
             <button class="btn btn--ghost btn--xs" id="setReset" type="button">♻️ Khôi phục mặc định</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ===== Đặt cọc banner (server-side config) ===== -->
+      <div class="panel">
+        <div class="panel-head"><h2>💵 Đặt cọc banner (đơn /tao-banner)</h2></div>
+        <p class="note" style="margin-bottom:18px"><span class="ic">💡</span>
+          <span>Cấu hình này lưu <b>trên máy chủ</b> (không phải trình duyệt) nên áp dụng cho <b>mọi khách</b>.
+          Khách chuyển khoản <b>thủ công</b> qua mã VietQR / Momo rồi bấm “Tôi đã chuyển cọc”; shop tự xác nhận đã nhận tiền.
+          <b>Không có thẻ, không cổng thanh toán, không tự trừ tiền.</b> Số tài khoản để <b>nhận tiền</b> nên không phải bí mật.
+          Bỏ trống thông tin ngân hàng → bước cọc tự chuyển sang “liên hệ shop”.</span></p>
+        <form id="depForm">
+          <div class="set-grid">
+            <div class="field full">
+              <label class="mk-check" style="font-weight:600"><input type="checkbox" id="depEnabled" style="width:auto"> Bật yêu cầu đặt cọc</label>
+            </div>
+            <div class="field"><label for="depGate">Chặn cọc ở bước</label>
+              <select id="depGate" class="st-sel" style="width:100%;padding:11px 13px">
+                <option value="submit">Khi gửi yêu cầu (khuyên dùng — cho xem trước miễn phí)</option>
+                <option value="start">Ngay từ đầu (trước khi chọn mẫu)</option>
+              </select>
+              <span class="hint">“Khi gửi” giữ funnel: khách xem được bản ghép rồi mới cọc — đúng lúc muốn nhất.</span></div>
+            <div class="field"><label for="depAmount">Số tiền cọc (₫)</label>
+              <input id="depAmount" type="number" min="0" step="1000" placeholder="50000"></div>
+            <div class="field"><label for="depMethod">Hình thức</label>
+              <select id="depMethod" class="st-sel" style="width:100%;padding:11px 13px">
+                <option value="vietqr">Chuyển khoản (VietQR)</option>
+                <option value="momo">Ví Momo</option>
+                <option value="manual">Thủ công (liên hệ shop)</option>
+              </select></div>
+            <div class="field"><label for="depBankCode">Mã ngân hàng (VietQR)</label>
+              <input id="depBankCode" type="text" placeholder="VD: VCB, TCB, 970436" autocomplete="off">
+              <span class="hint">Mã/BIN ngân hàng theo chuẩn VietQR (vd VCB = Vietcombank).</span></div>
+            <div class="field"><label for="depBankAccount">Số tài khoản nhận</label>
+              <input id="depBankAccount" type="text" placeholder="Số tài khoản để nhận cọc" autocomplete="off"></div>
+            <div class="field"><label for="depAccountName">Tên chủ tài khoản</label>
+              <input id="depAccountName" type="text" placeholder="VD: NGUYEN VAN A" autocomplete="off"></div>
+            <div class="field"><label for="depMomoPhone">SĐT Momo</label>
+              <input id="depMomoPhone" type="text" placeholder="VD: 0901234567" autocomplete="off"></div>
+            <div class="field"><label for="depShopZalo">Zalo/SĐT shop (dự phòng)</label>
+              <input id="depShopZalo" type="text" placeholder="Hiện khi chưa cấu hình ngân hàng" autocomplete="off"></div>
+            <div class="field full"><label for="depNote">Ghi chú chính sách cọc (hiện cho khách)</label>
+              <textarea id="depNote" rows="2" placeholder="VD: Cọc được TRỪ vào tổng tiền banner, HOÀN LẠI nếu shop không nhận làm."></textarea></div>
+          </div>
+          <p class="geo-status err" id="depErr" role="alert" style="margin-top:14px"></p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+            <button class="btn" type="submit">💾 Lưu cấu hình cọc</button>
+            <button class="btn btn--ghost btn--xs" id="depReload" type="button">🔄 Tải lại</button>
           </div>
         </form>
       </div>
@@ -868,6 +957,6 @@
 <script src="assets/js/stores.js?v=15"></script>
 <script src="assets/js/shop-data.js?v=3"></script>
 <script src="assets/js/face-circle.js?v=2"></script>
-<script src="assets/js/admin.js?v=18"></script>
+<script src="assets/js/admin.js?v=20"></script>
 </body>
 </html>

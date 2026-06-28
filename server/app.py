@@ -5,9 +5,17 @@ Endpoints (served behind nginx at https://dalipart.tranhdali.vn/api/):
   GET  /api/health                      -> liveness check
   POST /api/banner/remove-bg            -> AI background removal (rembg), returns PNG cutout
   POST /api/banner/request              -> store a customer banner request (photo + composite + info)
+  GET  /api/banner/config               -> PUBLIC deposit config (đặt cọc) for the builder
+  POST /api/banner/request/{rid}/deposit-> customer "Tôi đã chuyển cọc" claim (+ optional proof)
   GET  /api/admin/banner/list           -> list requests (nginx Basic Auth gates /api/admin/)
-  GET  /api/admin/banner/{rid}/{which}  -> download an image (photo | composite | cutout)
+  GET  /api/admin/banner/{rid}/{which}  -> download an image (photo | composite | cutout | deposit)
   POST /api/admin/banner/{rid}/status   -> update a request status
+  POST /api/admin/banner/{rid}/deposit  -> mark a request's deposit as confirmed (đã nhận cọc)
+  POST /api/admin/banner/config         -> save deposit config (owner-entered bank/Momo, no secrets)
+
+The deposit flow is bank-transfer-by-hand only: the customer scans a VietQR image
+(or copies the bank/Momo details), transfers manually, taps "đã chuyển", and the
+shop confirms by hand. NO card data, NO payment gateway, NO automated settlement.
 
 Data is stored OUTSIDE the public web root (DALI_DATA_DIR), so uploaded
 children's photos are never directly web-accessible — only via the
@@ -28,6 +36,7 @@ UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 INDEX_FILE = os.path.join(DATA_DIR, "requests.jsonl")
 MOCKUP_DIR = os.path.join(DATA_DIR, "mockups")        # uploads-sibling design store
 MOCKUP_INDEX = os.path.join(DATA_DIR, "mockups.jsonl")
+CONFIG_FILE = os.path.join(DATA_DIR, "config.json")   # deposit / commercial config (owner-editable)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(MOCKUP_DIR, exist_ok=True)
 
@@ -72,6 +81,110 @@ def _safe_id(rid: str) -> str:
     return rid
 
 
+# ===========================================================================
+# DEPOSIT CONFIG (đặt cọc) — owner-editable commercial config, stored SERVER-SIDE.
+#   Lives in config.json under DALI_DATA_DIR (NOT browser localStorage, which is
+#   per-browser and cannot reach customers). Bank account / Momo phone are
+#   PUBLIC-by-design (needed to receive a transfer) — there are no secrets here:
+#   no card numbers, no API keys, no gateway credentials. If nothing is
+#   configured the builder degrades to a "liên hệ shop" contact card.
+# ===========================================================================
+
+# Defaults are intentionally EMPTY for bank/account — never hardcode a real number.
+_CONFIG_DEFAULTS = {
+    "depositEnabled": False,          # master switch; off → builder skips the gate
+    "depositGate": "submit",          # "submit" (after free preview) | "start" (up front)
+    "depositAmount": 50000,           # flat cọc in VND (deductible + refundable framing)
+    "method": "vietqr",               # "vietqr" | "momo" | "manual"
+    "bankCode": "",                   # VietQR bank code/BIN (e.g. "VCB", "970436") — owner-entered
+    "bankAccount": "",                # receiving account number — owner-entered, public
+    "accountName": "",                # account holder name shown on the QR
+    "momoPhone": "",                  # Momo phone (method=momo)
+    "shopZalo": "",                   # fallback contact when unconfigured/down
+    "note": "",                       # extra note shown under the QR (policy/instructions)
+}
+
+_CONFIG_STR_KEYS = ("depositGate", "method", "bankCode", "bankAccount",
+                    "accountName", "momoPhone", "shopZalo", "note")
+_CONFIG_STR_MAX = 160
+_GATES = ("submit", "start")
+_METHODS = ("vietqr", "momo", "manual")
+
+
+def _read_config():
+    """Load config.json merged over defaults (missing/corrupt file → defaults)."""
+    cfg = dict(_CONFIG_DEFAULTS)
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                for k in _CONFIG_DEFAULTS:
+                    if k in data and data[k] is not None:
+                        cfg[k] = data[k]
+        except Exception:
+            pass
+    return cfg
+
+
+def _sanitize_config(data):
+    """Coerce incoming admin config into the validated, safe shape (no secrets)."""
+    if not isinstance(data, dict):
+        data = {}
+    out = dict(_CONFIG_DEFAULTS)
+    out["depositEnabled"] = bool(data.get("depositEnabled"))
+    gate = str(data.get("depositGate") or "submit").strip()
+    out["depositGate"] = gate if gate in _GATES else "submit"
+    method = str(data.get("method") or "vietqr").strip()
+    out["method"] = method if method in _METHODS else "vietqr"
+    try:
+        amt = int(float(data.get("depositAmount")))
+    except (TypeError, ValueError):
+        amt = _CONFIG_DEFAULTS["depositAmount"]
+    out["depositAmount"] = max(0, min(amt, 100000000))  # clamp 0..100M VND
+    for k in ("bankCode", "bankAccount", "accountName", "momoPhone", "shopZalo", "note"):
+        out[k] = str(data.get(k) or "").strip()[:_CONFIG_STR_MAX]
+    return out
+
+
+@app.get("/api/banner/config")
+def banner_config():
+    """PUBLIC: deposit config the builder reads to decide the gate + show the QR."""
+    return _read_config()
+
+
+@app.post("/api/admin/banner/config")
+async def admin_save_config(
+    depositEnabled: str = Form("0"),
+    depositGate: str = Form("submit"),
+    depositAmount: str = Form("50000"),
+    method: str = Form("vietqr"),
+    bankCode: str = Form(""),
+    bankAccount: str = Form(""),
+    accountName: str = Form(""),
+    momoPhone: str = Form(""),
+    shopZalo: str = Form(""),
+    note: str = Form(""),
+):
+    """ADMIN (nginx Basic Auth): persist deposit config to config.json.
+
+    Inputs are owner-entered and PUBLIC-by-design (a bank account exists to
+    receive money). We sanitise + clamp everything; nothing here is a secret.
+    """
+    cfg = _sanitize_config({
+        "depositEnabled": depositEnabled in ("1", "true", "True", "on", "yes"),
+        "depositGate": depositGate, "depositAmount": depositAmount,
+        "method": method, "bankCode": bankCode, "bankAccount": bankAccount,
+        "accountName": accountName, "momoPhone": momoPhone,
+        "shopZalo": shopZalo, "note": note,
+    })
+    tmp = CONFIG_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, CONFIG_FILE)
+    return {"ok": True, "config": cfg}
+
+
 @app.get("/api/health")
 def health():
     return {"ok": True, "service": "dali-banner", "at": _now()}
@@ -102,10 +215,13 @@ async def banner_request(
     contact: str = Form(""),
     note: str = Form(""),
     photoSlots: str = Form(""),
+    depositClaimed: str = Form("0"),
+    depositRef: str = Form(""),
     photo: UploadFile = File(None),
     photos: list[UploadFile] = File(None),
     cutout: UploadFile = File(None),
     composite: UploadFile = File(None),
+    deposit: UploadFile = File(None),
 ):
     """Store a finished banner request from a customer.
 
@@ -144,7 +260,8 @@ async def banner_request(
     if saved == 0:
         raise HTTPException(400, "Ảnh bé không hợp lệ.")
 
-    for up, fname in ((cutout, "cutout.png"), (composite, "composite.png")):
+    for up, fname in ((cutout, "cutout.png"), (composite, "composite.png"),
+                      (deposit, "deposit.png")):
         if up is not None:
             data = await up.read()
             if data and len(data) <= MAX_BYTES:
@@ -160,6 +277,21 @@ async def banner_request(
     except Exception:
         slots = []
 
+    # deposit (đặt cọc) snapshot — taken from the live config at request time so
+    # the record remembers what was asked even if the owner changes config later.
+    cfg = _read_config()
+    claimed = depositClaimed in ("1", "true", "True", "on", "yes")
+    has_proof = os.path.exists(os.path.join(folder, "deposit.png"))
+    dep = {
+        "required": bool(cfg.get("depositEnabled")),
+        "amount": int(cfg.get("depositAmount") or 0),
+        "method": cfg.get("method") or "vietqr",
+        "claimed": claimed,
+        "ref": (depositRef or "").strip()[:60] or ("DALI-" + rid),
+        "proof": has_proof,
+        "confirmed": False,
+    }
+
     rec = {
         "id": rid, "at": _now(), "status": "Mới",
         "name": name, "birthday": (birthday or "").strip()[:40],
@@ -168,6 +300,7 @@ async def banner_request(
         "mockup_name": (mockup_name or "").strip()[:80],
         "contact": contact, "note": (note or "").strip()[:500],
         "photoCount": saved, "photoSlots": slots,
+        "deposit": dep,
         "files": sorted(os.listdir(folder)),
     }
     with open(INDEX_FILE, "a", encoding="utf-8") as f:
@@ -189,6 +322,15 @@ def _load_index():
     return items
 
 
+def _save_index(items):
+    """Atomically rewrite the whole request index (tmp file + os.replace)."""
+    tmp = INDEX_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        for it in items:
+            f.write(json.dumps(it, ensure_ascii=False) + "\n")
+    os.replace(tmp, INDEX_FILE)
+
+
 @app.get("/api/admin/banner/list")
 def admin_list():
     items = _load_index()
@@ -199,7 +341,7 @@ def admin_list():
 @app.get("/api/admin/banner/{rid}/{which}")
 def admin_file(rid: str, which: str):
     rid = _safe_id(rid)
-    ok = which in ("photo", "cutout", "composite") or (
+    ok = which in ("photo", "cutout", "composite", "deposit") or (
         which.startswith("photo-") and which[6:].isdigit() and len(which) <= 12)
     if not ok:
         raise HTTPException(404, "Không tìm thấy.")
@@ -223,12 +365,81 @@ async def admin_status(rid: str, status: str = Form(...)):
             found = True
     if not found:
         raise HTTPException(404, "Không tìm thấy yêu cầu.")
-    tmp = INDEX_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        for it in items:
-            f.write(json.dumps(it, ensure_ascii=False) + "\n")
-    os.replace(tmp, INDEX_FILE)
+    _save_index(items)
     return {"ok": True}
+
+
+@app.post("/api/banner/request/{rid}/deposit")
+async def banner_deposit_claim(
+    rid: str,
+    depositRef: str = Form(""),
+    deposit: UploadFile = File(None),
+):
+    """PUBLIC (by request id): the customer's "Tôi đã chuyển cọc" claim.
+
+    Records claimed=True + an optional transfer-screenshot proof. Used when the
+    request was already created (e.g. confirming the deposit on the success
+    screen). The shop still verifies the money by hand via the admin confirm.
+    Manual bank transfer only — no card data, no gateway.
+    """
+    rid = _safe_id(rid)
+    items = _load_index()
+    rec = None
+    for it in items:
+        if it.get("id") == rid:
+            rec = it
+            break
+    if rec is None:
+        raise HTTPException(404, "Không tìm thấy yêu cầu.")
+
+    folder = os.path.join(UPLOAD_DIR, rid)
+    os.makedirs(folder, exist_ok=True)
+    has_proof = False
+    if deposit is not None:
+        data = await deposit.read()
+        if data and len(data) <= MAX_BYTES:
+            with open(os.path.join(folder, "deposit.png"), "wb") as f:
+                f.write(data)
+            has_proof = True
+
+    dep = rec.get("deposit") or {}
+    dep["claimed"] = True
+    ref = (depositRef or "").strip()[:60]
+    if ref:
+        dep["ref"] = ref
+    elif not dep.get("ref"):
+        dep["ref"] = "DALI-" + rid
+    if has_proof:
+        dep["proof"] = True
+    dep.setdefault("confirmed", False)
+    rec["deposit"] = dep
+    if os.path.isdir(folder):
+        rec["files"] = sorted(os.listdir(folder))
+    _save_index(items)
+    return {"ok": True, "id": rid, "deposit": dep}
+
+
+@app.post("/api/admin/banner/{rid}/deposit")
+async def admin_deposit_confirm(rid: str, confirmed: str = Form("1")):
+    """ADMIN (nginx Basic Auth): mark a request's deposit as received/confirmed.
+
+    Default confirms; pass confirmed=0 to undo (e.g. mis-click)."""
+    rid = _safe_id(rid)
+    is_confirmed = confirmed in ("1", "true", "True", "on", "yes")
+    items = _load_index()
+    found = False
+    for it in items:
+        if it.get("id") == rid:
+            dep = it.get("deposit") or {}
+            dep["confirmed"] = is_confirmed
+            if is_confirmed:
+                dep["claimed"] = True  # confirming implies a claim was made
+            it["deposit"] = dep
+            found = True
+    if not found:
+        raise HTTPException(404, "Không tìm thấy yêu cầu.")
+    _save_index(items)
+    return {"ok": True, "confirmed": is_confirmed}
 
 
 @app.delete("/api/admin/banner/{rid}")
@@ -239,11 +450,7 @@ def banner_delete(rid: str):
     keep = [it for it in items if it.get("id") != rid]
     if len(keep) == len(items):
         raise HTTPException(404, "Không tìm thấy yêu cầu.")
-    tmp = INDEX_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        for it in keep:
-            f.write(json.dumps(it, ensure_ascii=False) + "\n")
-    os.replace(tmp, INDEX_FILE)
+    _save_index(keep)
     folder = os.path.join(UPLOAD_DIR, rid)
     if os.path.isdir(folder):
         import shutil

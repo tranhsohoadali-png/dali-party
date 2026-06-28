@@ -782,8 +782,54 @@
         note +
         '<div class="bn-at">🕐 ' + esc(fmtDate(b.at)) + "</div>" +
       "</div>" +
+      bannerDepositRow(b, base) +
       '<div class="bn-foot">' + dl + sel + "</div>" +
     "</article>";
+  }
+  /* Deposit (đặt cọc) status row + actions on a banner card.
+     dep.confirmed = shop verified the money; dep.claimed = khách báo đã chuyển. */
+  function bannerDepositRow(b, base) {
+    var dep = b.deposit || {};
+    var id = b.id;
+    var st, cls;
+    if (dep.confirmed) { st = "✓ đã xác nhận"; cls = "is-confirmed"; }
+    else if (dep.claimed) { st = "khách báo đã chuyển"; cls = "is-claimed"; }
+    else { st = "chưa khai"; cls = "is-none"; }
+    var bits = ['<span class="dep-st ' + cls + '">Cọc: ' + st + "</span>"];
+    if (dep.amount) bits.push('<span class="dep-amt">' + money(dep.amount) + "</span>");
+    if (dep.proof) bits.push('<a class="dep-proof" href="' + esc(base + "/deposit") +
+      '" target="_blank" rel="noopener">🧾 Ảnh CK</a>');
+    bits.push('<span class="dep-spacer"></span>');
+    if (!dep.confirmed) {
+      bits.push('<button class="mini-btn ok" data-bndep="' + esc(id) +
+        '" type="button">✓ Xác nhận đã nhận cọc</button>');
+    }
+    bits.push('<button class="mini-btn danger" data-bnreqdel="' + esc(id) +
+      '" type="button">🗑️ Xoá</button>');
+    return '<div class="bn-dep">' + bits.join("") + "</div>";
+  }
+  function confirmBannerDeposit(id) {
+    var fd = new FormData();
+    fd.append("confirmed", "1");
+    fetch("/api/admin/banner/" + encodeURIComponent(id) + "/deposit", { method: "POST", body: fd })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error("bad response");
+        toast("Đã xác nhận nhận cọc");
+        renderBanners();
+      })
+      .catch(function () { toast("Không cập nhật được cọc — kiểm tra máy chủ.", true); });
+  }
+  function deleteBannerRequest(id) {
+    if (!confirm("Xoá yêu cầu banner này? Ảnh & dữ liệu sẽ bị xoá khỏi máy chủ.")) return;
+    fetch("/api/admin/banner/" + encodeURIComponent(id), { method: "DELETE" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error("bad response");
+        toast("Đã xoá yêu cầu banner");
+        renderBanners();
+      })
+      .catch(function () { toast("Không xoá được — kiểm tra máy chủ.", true); });
   }
   function setBannerStatus(id, status, selEl) {
     var fd = new FormData();
@@ -816,7 +862,8 @@
   var mkActive = -1;           // selected hole index, -1 = none
   var mkDrag = null;           // in-progress drag anchor {x,y} in canvas px
   var mkDrawing = null;        // the live rect being drawn (canvas px) before commit
-  var MK_CANVAS_MAX = 360;     // max canvas width in px (fit-to-width)
+  var MK_CANVAS_MAX = 1100;    // max INTERNAL bitmap width in px — high-res so detail exists; CSS only ever downscales it
+  var mkZoom = 1;              // DISPLAY-only zoom (1..4): scales .mk-pan CSS width inside the scrolling stage
 
   function mkCanvas() { return $("mkCanvas"); }
   function mkRedrawBase() {
@@ -851,6 +898,21 @@
       boxFor(mkDrawing, (($("mkRound") && $("mkRound").checked) ? " is-round" : "") + " is-active", null);
     }
   }
+  /* DISPLAY-only zoom: widen .mk-pan beyond the stage so the shop pans by scrolling.
+     mkEventToCanvas + mkRenderOverlays both derive scale from getBoundingClientRect at
+     call time, so they stay correct at any CSS width — we MUST re-render overlays after. */
+  function mkApplyZoom() {
+    var pan = $("mkPan"); if (pan) pan.style.width = (mkZoom * 100) + "%";
+    var st = $("mkStage");
+    if (st) st.style.touchAction = (mkZoom > 1) ? "pan-x pan-y" : "none"; // 2-finger pan only when zoomed
+    var vv = $("mkZoomVal"); if (vv) vv.textContent = (Math.round(mkZoom * 100) / 100) + "×";
+    mkRenderOverlays();
+  }
+  function mkSetZoom(z) {
+    mkZoom = Math.max(1, Math.min(4, z || 1));
+    var zr = $("mkZoom"); if (zr) zr.value = mkZoom;
+    mkApplyZoom();
+  }
   /* Render the editable holes list (label + round toggle + select + delete). */
   function mkRenderList() {
     var host = $("mkHoleList"); if (!host) return;
@@ -879,7 +941,30 @@
           if (mkActive === idx) mkActive = -1; else if (mkActive > idx) mkActive--;
           mkRenderOverlays(); mkRenderList(); mkUpdateHoleInfo();
         });
-        row.appendChild(num); row.appendChild(lbl); row.appendChild(rnd); row.appendChild(del);
+        row.appendChild(num); row.appendChild(lbl); row.appendChild(rnd);
+        /* fine-tune: nudge the active hole ±1 canvas px per axis (holes stay in canvas px) */
+        if (idx === mkActive) {
+          var nudge = document.createElement("span");
+          nudge.className = "mk-nudge";
+          function mkNudgeBtn(txt, ttl, dx, dy) {
+            var b = document.createElement("button");
+            b.type = "button"; b.className = "mk-iconbtn nudge"; b.textContent = txt; b.title = ttl;
+            b.addEventListener("click", function () {
+              var cv = mkCanvas(); if (!cv) return;
+              var hh = mkHoles[idx];
+              hh.x = Math.max(0, Math.min(cv.width - hh.w, hh.x + dx));
+              hh.y = Math.max(0, Math.min(cv.height - hh.h, hh.y + dy));
+              mkRenderOverlays();
+            });
+            return b;
+          }
+          nudge.appendChild(mkNudgeBtn("←", "Sang trái 1px", -1, 0));
+          nudge.appendChild(mkNudgeBtn("→", "Sang phải 1px", 1, 0));
+          nudge.appendChild(mkNudgeBtn("↑", "Lên 1px", 0, -1));
+          nudge.appendChild(mkNudgeBtn("↓", "Xuống 1px", 0, 1));
+          row.appendChild(nudge);
+        }
+        row.appendChild(del);
         host.appendChild(row);
       })(i);
     }
@@ -954,7 +1039,8 @@
         cv.height = Math.round(nh * mkScale);
         mkHoles = []; mkActive = -1; mkDrag = null; mkDrawing = null;
         mkRedrawBase();
-        mkRenderOverlays(); mkRenderList();
+        mkSetZoom(1); // reset zoom + re-render overlays for the new image (calls mkRenderOverlays)
+        mkRenderList();
         var ph = $("mkPlaceholder"); if (ph) ph.hidden = true;
         mkUpdateHoleInfo();
         mkAutoDetectAll(file, false);
@@ -1001,13 +1087,34 @@
       mkDrawing = null;
       mkRenderOverlays(); mkRenderList(); mkUpdateHoleInfo();
     }
+    /* Scope drag to the stage (was document-level, which leaked across SPA tabs).
+       A window-level mouseup only CANCELS an in-progress drag started on the stage. */
     mkStage.addEventListener("mousedown", mkDown);
-    document.addEventListener("mousemove", mkMove);
-    document.addEventListener("mouseup", mkUp);
+    mkStage.addEventListener("mousemove", mkMove);
+    mkStage.addEventListener("mouseup", mkUp);
+    window.addEventListener("mouseup", function () { if (mkDrag) mkUp(); });
     mkStage.addEventListener("touchstart", mkDown, { passive: false });
     mkStage.addEventListener("touchmove", mkMove, { passive: false });
     mkStage.addEventListener("touchend", mkUp);
+    /* Ctrl + wheel = zoom (plain wheel keeps scrolling/panning the stage). */
+    mkStage.addEventListener("wheel", function (e) {
+      if (!mkImg || !e.ctrlKey) return;
+      e.preventDefault();
+      mkSetZoom(mkZoom + (e.deltaY < 0 ? 0.25 : -0.25));
+    }, { passive: false });
   }
+  /* Zoom controls */
+  var mkZoomRange = $("mkZoom");
+  if (mkZoomRange) mkZoomRange.addEventListener("input", function () { mkSetZoom(parseFloat(this.value)); });
+  var mkZoomInBtn = $("mkZoomIn");
+  if (mkZoomInBtn) mkZoomInBtn.addEventListener("click", function () { mkSetZoom(mkZoom + 0.25); });
+  var mkZoomOutBtn = $("mkZoomOut");
+  if (mkZoomOutBtn) mkZoomOutBtn.addEventListener("click", function () { mkSetZoom(mkZoom - 0.25); });
+  var mkZoomFitBtn = $("mkZoomFit");
+  if (mkZoomFitBtn) mkZoomFitBtn.addEventListener("click", function () {
+    mkSetZoom(1);
+    var st = $("mkStage"); if (st) { st.scrollLeft = 0; st.scrollTop = 0; }
+  });
   /* Keep overlays aligned to the canvas if the panel reflows */
   window.addEventListener("resize", function () { var st = $("mkStage"); if (mkHoles.length && st && st.closest(".view") && !st.closest(".view").hidden) mkRenderOverlays(); });
 
@@ -1015,7 +1122,8 @@
     var f = $("mkForm"); if (f) f.reset();
     mkImg = null; mkHoles = []; mkActive = -1; mkDrag = null; mkDrawing = null; mkScale = 1;
     var cv = mkCanvas(); if (cv) { cv.width = 360; cv.height = 240; var ctx = cv.getContext("2d"); if (ctx) ctx.clearRect(0, 0, cv.width, cv.height); }
-    mkRenderOverlays(); mkRenderList();
+    mkSetZoom(1); // reset zoom slider/pan width + re-render overlays (calls mkRenderOverlays)
+    mkRenderList();
     var ph = $("mkPlaceholder"); if (ph) ph.hidden = false;
     $("mkErr").textContent = "";
     mkUpdateHoleInfo();
@@ -1283,6 +1391,7 @@
     if ($("setGoalRevenue")) $("setGoalRevenue").value = s.goalRevenue != null ? s.goalRevenue : "";
     if ($("setGoalOrders")) $("setGoalOrders").value = s.goalOrders != null ? s.goalOrders : "";
     if ($("setGoalCustomers")) $("setGoalCustomers").value = s.goalCustomers != null ? s.goalCustomers : "";
+    loadDepositConfig();
   }
   $("setForm").addEventListener("submit", function (e) {
     e.preventDefault();
@@ -1318,6 +1427,69 @@
     if (!confirm("Khôi phục cài đặt về mặc định?")) return;
     SHOP.resetSettings(); loadSettings(); toast("Đã khôi phục cài đặt mặc định");
   });
+
+  /* ============================================================
+     DEPOSIT CONFIG (đặt cọc) — SERVER-SIDE (config.json), not localStorage.
+     GET  /api/banner/config            -> {depositEnabled,depositGate,…}
+     POST /api/admin/banner/config      -> save (form fields)
+     ============================================================ */
+  function loadDepositConfig() {
+    if (!$("depForm")) return;
+    fetch("/api/banner/config", { headers: { Accept: "application/json" } })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (c) {
+        c = c || {};
+        if ($("depEnabled")) $("depEnabled").checked = !!c.depositEnabled;
+        if ($("depGate")) $("depGate").value = c.depositGate || "submit";
+        if ($("depAmount")) $("depAmount").value = (c.depositAmount != null ? c.depositAmount : "");
+        if ($("depMethod")) $("depMethod").value = c.method || "vietqr";
+        if ($("depBankCode")) $("depBankCode").value = c.bankCode || "";
+        if ($("depBankAccount")) $("depBankAccount").value = c.bankAccount || "";
+        if ($("depAccountName")) $("depAccountName").value = c.accountName || "";
+        if ($("depMomoPhone")) $("depMomoPhone").value = c.momoPhone || "";
+        if ($("depShopZalo")) $("depShopZalo").value = c.shopZalo || "";
+        if ($("depNote")) $("depNote").value = c.note || "";
+        if ($("depErr")) $("depErr").textContent = "";
+      })
+      .catch(function () { if ($("depErr")) $("depErr").textContent = "Chưa tải được cấu hình cọc (cần bật backend)."; });
+  }
+  if ($("depForm")) {
+    $("depForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var depErr = $("depErr"); if (depErr) depErr.textContent = "";
+      var fd = new FormData();
+      fd.append("depositEnabled", $("depEnabled") && $("depEnabled").checked ? "1" : "0");
+      fd.append("depositGate", $("depGate") ? $("depGate").value : "submit");
+      fd.append("depositAmount", ($("depAmount") ? $("depAmount").value.trim() : "") || "0");
+      fd.append("method", $("depMethod") ? $("depMethod").value : "vietqr");
+      fd.append("bankCode", $("depBankCode") ? $("depBankCode").value.trim() : "");
+      fd.append("bankAccount", $("depBankAccount") ? $("depBankAccount").value.trim() : "");
+      fd.append("accountName", $("depAccountName") ? $("depAccountName").value.trim() : "");
+      fd.append("momoPhone", $("depMomoPhone") ? $("depMomoPhone").value.trim() : "");
+      fd.append("shopZalo", $("depShopZalo") ? $("depShopZalo").value.trim() : "");
+      fd.append("note", $("depNote") ? $("depNote").value.trim() : "");
+      var btn = this.querySelector('button[type="submit"]'); var label = btn ? btn.textContent : "";
+      if (btn) { btn.disabled = true; btn.textContent = "⏳ Đang lưu…"; }
+      fetch("/api/admin/banner/config", { method: "POST", body: fd })
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (res) {
+          if (!res || !res.ok) throw new Error("bad response");
+          toast("Đã lưu cấu hình cọc");
+          if (res.config) {  /* reflect the server-sanitised values back */
+            if ($("depAmount")) $("depAmount").value = res.config.depositAmount;
+            if ($("depGate")) $("depGate").value = res.config.depositGate;
+            if ($("depMethod")) $("depMethod").value = res.config.method;
+          }
+        })
+        .catch(function () {
+          if (depErr) depErr.textContent = "Không lưu được — chưa kết nối được máy chủ (cần bật backend).";
+          toast("Không lưu được cấu hình cọc — kiểm tra máy chủ.", true);
+        })
+        .then(function () { if (btn) { btn.disabled = false; btn.textContent = label; } });
+    });
+    var depReload = $("depReload");
+    if (depReload) depReload.addEventListener("click", function () { loadDepositConfig(); });
+  }
 
   /* ============================================================
      STORES (Leaflet + Nominatim) — ported from the store admin
@@ -1476,6 +1648,8 @@
     var mv = t.closest("[data-mview]"); if (mv) { viewMessage(mv.getAttribute("data-mview")); return; }
     var md = t.closest("[data-mdel]"); if (md) { if (confirm("Xoá tin nhắn này?")) { SHOP.deleteMessage(md.getAttribute("data-mdel")); renderMessages(); refreshCounts(); toast("Đã xoá tin nhắn"); } return; }
     var mkd = t.closest("[data-mkdel]"); if (mkd) { deleteMockup(mkd.getAttribute("data-mkdel")); return; }
+    var bnd = t.closest("[data-bndep]"); if (bnd) { confirmBannerDeposit(bnd.getAttribute("data-bndep")); return; }
+    var bnq = t.closest("[data-bnreqdel]"); if (bnq) { deleteBannerRequest(bnq.getAttribute("data-bnreqdel")); return; }
     var se = t.closest("[data-sedit]"); if (se) { openStore(se.getAttribute("data-sedit")); return; }
     var sd = t.closest("[data-sdel]"); if (sd) { deleteStore(sd.getAttribute("data-sdel")); return; }
     var cv = t.closest("[data-csv]"); if (cv) { exportOrdersCSV(); return; }
