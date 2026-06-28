@@ -3,3 +3,8 @@ dali-party.zip
 .stitch_ref/
 .tmp_*/
 .claude/
+
+# Python build cache
+server/__pycache__/
+__pycache__/
+*.pyc
