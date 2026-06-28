@@ -284,11 +284,32 @@
   .mk-stage { position: relative; width: 100%; max-width: 380px; border: 1.5px dashed var(--line);
     border-radius: var(--radius); background: var(--green-50); overflow: hidden; touch-action: none; }
   .mk-stage canvas { display: block; width: 100%; height: auto; cursor: crosshair; }
+  .mk-overlay-wrap { position: absolute; inset: 0; pointer-events: none; }
   .mk-overlay { position: absolute; border: 2px solid var(--green-700); background: rgba(111,168,46,.18);
-    box-shadow: 0 0 0 9999px rgba(20,30,16,.08); pointer-events: none; }
+    pointer-events: none; box-sizing: border-box; }
   .mk-overlay.is-round { border-radius: 50%; }
+  .mk-overlay.is-active { border-color: #8cc63f; border-width: 3px; background: rgba(140,198,63,.26);
+    box-shadow: 0 0 0 2px rgba(65,105,0,.35); }
+  .mk-overlay .mk-num { position: absolute; top: -10px; left: -10px; min-width: 20px; height: 20px; padding: 0 4px;
+    border-radius: 50%; background: var(--green-700); color: #fff; font-size: .72rem; font-weight: 800;
+    display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  .mk-overlay.is-active .mk-num { background: #8cc63f; color: #1c3000; }
   .mk-placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
     color: var(--muted); font-size: .84rem; font-weight: 600; padding: 20px; pointer-events: none; }
+  /* holes list (multi-hole editor) */
+  .mk-hole-list { display: flex; flex-direction: column; gap: 6px; }
+  .mk-hole-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line);
+    border-radius: 8px; background: #fff; }
+  .mk-hole-row.is-active { border-color: #8cc63f; box-shadow: 0 0 0 1.5px rgba(140,198,63,.45); background: var(--green-50); }
+  .mk-hole-row .mk-num { flex: 0 0 auto; min-width: 22px; height: 22px; border-radius: 50%; background: var(--green-700);
+    color: #fff; font-size: .76rem; font-weight: 800; display: grid; place-items: center; cursor: pointer; }
+  .mk-hole-row.is-active .mk-num { background: #8cc63f; color: #1c3000; }
+  .mk-hole-row input.mk-lbl { flex: 1 1 auto; min-width: 0; padding: 4px 7px; font-size: .82rem;
+    border: 1px solid var(--line); border-radius: 6px; }
+  .mk-hole-row .mk-iconbtn { flex: 0 0 auto; border: 1px solid var(--line); background: #fff; border-radius: 6px;
+    padding: 3px 7px; font-size: .82rem; cursor: pointer; line-height: 1; }
+  .mk-hole-row .mk-iconbtn.on { background: var(--green-700); color: #fff; border-color: var(--green-700); }
+  .mk-hole-row .mk-iconbtn.danger:hover { background: #fbe7e7; border-color: #d88; }
 
   .mk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
   .mk-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius);
@@ -296,8 +317,11 @@
   .mk-thumb-wrap { position: relative; width: 100%; aspect-ratio: 3 / 2; background: var(--green-50);
     border-bottom: 1px solid var(--line); overflow: hidden; }
   .mk-thumb-wrap img { width: 100%; height: 100%; object-fit: contain; display: block; }
-  .mk-hole { position: absolute; border: 2px solid var(--green-700); background: rgba(111,168,46,.16); }
+  .mk-hole { position: absolute; border: 2px solid var(--green-700); background: rgba(111,168,46,.16); box-sizing: border-box; }
   .mk-hole.is-round { border-radius: 50%; }
+  .mk-hole .mk-num { position: absolute; top: -8px; left: -8px; min-width: 16px; height: 16px; padding: 0 3px;
+    border-radius: 50%; background: var(--green-700); color: #fff; font-size: .62rem; font-weight: 800;
+    display: grid; place-items: center; }
   .mk-card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; }
   .mk-card-name { font-size: 1rem; font-weight: 800; color: var(--ink); line-height: 1.2; word-break: break-word; }
   .mk-card-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: .78rem; color: var(--muted); font-weight: 600; }
@@ -584,7 +608,8 @@
         <div class="panel-head"><h2>Tải thiết kế mockup lên</h2>
           <span class="toolbar-spacer"></span></div>
         <p class="note" style="margin-bottom:18px"><span class="ic" aria-hidden="true">💡</span>
-          <span>Tải ảnh thiết kế lên rồi <b>kéo chuột trên ảnh</b> để khoanh vùng đặt ảnh/khuôn mặt của khách.
+          <span>Tải ảnh thiết kế lên rồi <b>kéo chuột trên ảnh</b> để khoanh <b>nhiều vùng</b> đặt ảnh/khuôn mặt
+          (ô chính, cột số, chibi…). Mỗi ô là một ảnh khách sẽ tải lên (Ảnh 1 → ô 1, Ảnh 2 → ô 2…).
           Mockup đã lưu sẽ hiện cho khách chọn ở trang tạo banner.</span></p>
         <form id="mkForm">
           <div class="mk-form-grid">
@@ -592,19 +617,22 @@
               <div class="field"><label for="mkName">Tên mockup *</label>
                 <input type="text" id="mkName" required placeholder="VD: Khung sinh nhật bong bóng hồng"></div>
               <div class="field"><label for="mkFile">Ảnh thiết kế (PNG/JPG/WebP) *</label>
-                <input type="file" id="mkFile" accept="image/png,image/jpeg,image/webp" required></div>
+                <input type="file" id="mkFile" accept="image/png,image/jpeg,image/webp" required>
+                <button class="btn btn--ghost btn--xs" type="button" id="mkAiAll" style="margin-top:8px">🤖 AI khoanh tất cả khuôn mặt</button>
+              </div>
               <div class="field"><label>Tuỳ chọn vùng</label>
-                <label class="mk-check"><input type="checkbox" id="mkRound"> 🔵 Tròn (thay mặt)</label>
+                <label class="mk-check"><input type="checkbox" id="mkRound"> 🔵 Tròn (thay mặt) — áp dụng cho ô mới kéo</label>
                 <label class="mk-check"><input type="checkbox" id="mkShowText"> Hiện chữ Happy Birthday + tên / ngày</label>
               </div>
               <p class="mk-hint" id="mkHoleInfo">Chưa chọn ảnh.</p>
+              <div class="mk-hole-list" id="mkHoleList"></div>
             </div>
             <div class="mk-right">
-              <label class="mk-canvas-lbl">Khoanh vùng đặt ảnh / khuôn mặt</label>
+              <label class="mk-canvas-lbl">Khoanh vùng đặt ảnh / khuôn mặt (kéo nhiều ô)</label>
               <div class="mk-stage" id="mkStage">
                 <canvas id="mkCanvas" width="360" height="240"></canvas>
-                <div class="mk-overlay" id="mkOverlay" hidden></div>
-                <div class="mk-placeholder" id="mkPlaceholder">Chọn ảnh để bắt đầu — rồi kéo chuột để khoanh vùng.</div>
+                <div class="mk-overlay-wrap" id="mkOverlay"></div>
+                <div class="mk-placeholder" id="mkPlaceholder">Chọn ảnh để bắt đầu — rồi kéo chuột để khoanh nhiều vùng.</div>
               </div>
             </div>
           </div>
@@ -839,7 +867,7 @@
 
 <script src="assets/js/stores.js?v=15"></script>
 <script src="assets/js/shop-data.js?v=3"></script>
-<script src="assets/js/face-circle.js?v=1"></script>
-<script src="assets/js/admin.js?v=17"></script>
+<script src="assets/js/face-circle.js?v=2"></script>
+<script src="assets/js/admin.js?v=18"></script>
 </body>
 </html>

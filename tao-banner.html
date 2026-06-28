@@ -39,9 +39,22 @@
   .bb-zoom{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:.86rem;color:#4a5740}
   .bb-zoom input{flex:1}
   .bb-note{font-size:.8rem;color:#6b7763;margin:8px 0 0}
-  .bb-mode{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-top:12px;font-size:.86rem;color:#4a5740}
-  .bb-mode>span{font-weight:600}
-  .bb-mode label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+  .bb-slots{display:flex;flex-direction:column;gap:10px}
+  .bb-slot{display:flex;align-items:center;gap:11px;border:2px solid #e6ecda;border-radius:12px;
+    padding:8px 10px;background:#fbfdf6;cursor:pointer;transition:.15s}
+  .bb-slot:hover{border-color:#bcd98a}
+  .bb-slot.active{border-color:var(--green-500,#8cc63f);box-shadow:0 0 0 3px rgba(140,198,63,.18)}
+  .bb-slot .bb-thumb{flex:none;width:46px;height:46px;border-radius:10px;background:#efe7da center/cover no-repeat;
+    border:1px solid #e0d8c6;display:flex;align-items:center;justify-content:center;font-size:1.3rem;color:#a99;overflow:hidden}
+  .bb-slot .bb-slot-body{flex:1;min-width:0}
+  .bb-slot .bb-slot-label{font-size:.84rem;font-weight:600;color:#4a5740;display:block}
+  .bb-slot .bb-slot-sub{font-size:.74rem;color:#7a8770;display:block;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bb-slot .bb-slot-sub.ok{color:#3a7d1e}.bb-slot .bb-slot-sub.err{color:#c0392b}.bb-slot .bb-slot-sub.busy{color:#9a7d12}
+  .bb-slot .bb-slot-pick{flex:none;background:var(--green-700,#416900);color:#fff;font-weight:600;font-size:.8rem;
+    padding:7px 11px;border-radius:9px;cursor:pointer;border:none}
+  .bb-slot .bb-slot-pick:hover{filter:brightness(1.06)}
+  .bb-slot .bb-slot-del{flex:none;background:none;border:none;color:#b3261e;font-size:.82rem;cursor:pointer;padding:4px 2px}
+  .bb-slot.filled .bb-thumb{color:#3a7d1e}
   .bb-step input[type=text],.bb-step input:not([type]),.bb-step textarea{width:100%;padding:11px 13px;border:1px solid #d8e0c8;
     border-radius:10px;font:inherit;margin-bottom:10px;background:#fcfdfa}
   .bb-step input:focus,.bb-step textarea:focus{outline:none;border-color:var(--green-500,#8cc63f);box-shadow:0 0 0 3px rgba(140,198,63,.15)}
@@ -127,15 +140,10 @@
         </div>
         <div class="bb-step">
           <h3>2 · Ảnh của bé</h3>
-          <label class="bb-upload">📷 Tải ảnh bé<input type="file" id="bbPhoto" accept="image/*" hidden></label>
+          <div class="bb-slots" id="bbSlots"></div>
           <div class="bb-status" id="bbPhotoStatus"></div>
-          <div class="bb-mode" id="bbModeWrap" hidden>
-            <span>Kiểu:</span>
-            <label><input type="radio" name="bbmode" value="full" checked> Cả người</label>
-            <label><input type="radio" name="bbmode" value="face"> 🙂 Thay mặt (cắt mặt tròn)</label>
-          </div>
-          <label class="bb-zoom" id="bbZoomWrap" hidden>Phóng to <input type="range" id="bbZoom" min="0.5" max="2.6" step="0.01" value="1"></label>
-          <p class="bb-note">💡 Kéo ảnh ngay trong khung xem trước để chỉnh vị trí cho vừa.</p>
+          <label class="bb-zoom" id="bbZoomWrap" hidden>Phóng to ô đang chọn <input type="range" id="bbZoom" min="0.5" max="2.6" step="0.01" value="1"></label>
+          <p class="bb-note">💡 Bấm vào một ô rồi kéo ảnh ngay trong khung xem trước để chỉnh vị trí cho vừa.</p>
         </div>
         <div class="bb-step">
           <h3>3 · Thông tin bé</h3>
@@ -215,7 +223,7 @@
 
 <script src="assets/js/shop-data.js?v=1"></script>
 <script src="assets/js/main.js?v=16"></script>
-<script src="assets/js/face-circle.js?v=1"></script>
-<script src="assets/js/banner-builder.js?v=4"></script>
+<script src="assets/js/face-circle.js?v=2"></script>
+<script src="assets/js/banner-builder.js?v=5"></script>
 </body>
 </html>

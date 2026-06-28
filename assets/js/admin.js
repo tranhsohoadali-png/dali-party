@@ -812,8 +812,10 @@
      ============================================================ */
   var mkImg = null;            // the loaded HTMLImageElement (null until a file is picked)
   var mkScale = 1;             // displayed-canvas px per natural image px
-  var mkHole = null;           // committed hole rect in CANVAS px: {x,y,w,h} (null until drawn)
+  var mkHoles = [];            // committed holes in CANVAS px: [{x,y,w,h,round,label}], ordered (Ảnh 1, Ảnh 2…)
+  var mkActive = -1;           // selected hole index, -1 = none
   var mkDrag = null;           // in-progress drag anchor {x,y} in canvas px
+  var mkDrawing = null;        // the live rect being drawn (canvas px) before commit
   var MK_CANVAS_MAX = 360;     // max canvas width in px (fit-to-width)
 
   function mkCanvas() { return $("mkCanvas"); }
@@ -823,29 +825,70 @@
     ctx.clearRect(0, 0, cv.width, cv.height);
     if (mkImg) ctx.drawImage(mkImg, 0, 0, cv.width, cv.height);
   }
-  /* Position the live overlay box from a canvas-px rect, accounting for the
-     canvas being CSS-scaled to its container width. */
-  function mkPositionOverlay(rect) {
-    var ov = $("mkOverlay"), cv = mkCanvas(); if (!ov || !cv) return;
-    if (!rect || rect.w < 1 || rect.h < 1) { ov.hidden = true; return; }
+  /* Re-render ALL hole overlay boxes (one per hole + the live draw rect) into
+     #mkOverlay, accounting for the canvas being CSS-scaled to its container. */
+  function mkRenderOverlays() {
+    var wrap = $("mkOverlay"), cv = mkCanvas(); if (!wrap || !cv) return;
+    wrap.innerHTML = "";
     var disp = cv.getBoundingClientRect();
     var sx = cv.width ? disp.width / cv.width : 1;
     var sy = cv.height ? disp.height / cv.height : 1;
-    ov.style.left = (rect.x * sx) + "px";
-    ov.style.top = (rect.y * sy) + "px";
-    ov.style.width = (rect.w * sx) + "px";
-    ov.style.height = (rect.h * sy) + "px";
-    ov.classList.toggle("is-round", !!($("mkRound") && $("mkRound").checked));
-    ov.hidden = false;
+    function boxFor(rect, cls, badge) {
+      var b = document.createElement("div");
+      b.className = "mk-overlay" + cls;
+      b.style.left = (rect.x * sx) + "px";
+      b.style.top = (rect.y * sy) + "px";
+      b.style.width = (rect.w * sx) + "px";
+      b.style.height = (rect.h * sy) + "px";
+      if (badge != null) { var n = document.createElement("span"); n.className = "mk-num"; n.textContent = badge; b.appendChild(n); }
+      wrap.appendChild(b);
+    }
+    for (var i = 0; i < mkHoles.length; i++) {
+      var h = mkHoles[i];
+      boxFor(h, (h.round ? " is-round" : "") + (i === mkActive ? " is-active" : ""), i + 1);
+    }
+    if (mkDrawing && mkDrawing.w >= 1 && mkDrawing.h >= 1) {
+      boxFor(mkDrawing, (($("mkRound") && $("mkRound").checked) ? " is-round" : "") + " is-active", null);
+    }
+  }
+  /* Render the editable holes list (label + round toggle + select + delete). */
+  function mkRenderList() {
+    var host = $("mkHoleList"); if (!host) return;
+    host.innerHTML = "";
+    for (var i = 0; i < mkHoles.length; i++) {
+      (function (idx) {
+        var h = mkHoles[idx];
+        var row = document.createElement("div");
+        row.className = "mk-hole-row" + (idx === mkActive ? " is-active" : "");
+        var num = document.createElement("span");
+        num.className = "mk-num"; num.textContent = (idx + 1); num.title = "Chọn ô này";
+        num.addEventListener("click", function () { mkActive = idx; mkRenderOverlays(); mkRenderList(); });
+        var lbl = document.createElement("input");
+        lbl.type = "text"; lbl.className = "mk-lbl"; lbl.value = h.label || "";
+        lbl.placeholder = "Tên ô (vd: Ảnh chính, Cột số…)";
+        lbl.addEventListener("input", function () { mkHoles[idx].label = this.value; });
+        lbl.addEventListener("focus", function () { mkActive = idx; mkRenderOverlays(); mkRenderList(); });
+        var rnd = document.createElement("button");
+        rnd.type = "button"; rnd.className = "mk-iconbtn" + (h.round ? " on" : "");
+        rnd.textContent = h.round ? "🔵" : "▭"; rnd.title = h.round ? "Tròn" : "Chữ nhật";
+        rnd.addEventListener("click", function () { mkHoles[idx].round = !mkHoles[idx].round; mkRenderOverlays(); mkRenderList(); });
+        var del = document.createElement("button");
+        del.type = "button"; del.className = "mk-iconbtn danger"; del.textContent = "🗑"; del.title = "Xoá ô";
+        del.addEventListener("click", function () {
+          mkHoles.splice(idx, 1);
+          if (mkActive === idx) mkActive = -1; else if (mkActive > idx) mkActive--;
+          mkRenderOverlays(); mkRenderList(); mkUpdateHoleInfo();
+        });
+        row.appendChild(num); row.appendChild(lbl); row.appendChild(rnd); row.appendChild(del);
+        host.appendChild(row);
+      })(i);
+    }
   }
   function mkUpdateHoleInfo() {
     var info = $("mkHoleInfo"); if (!info) return;
     if (!mkImg) { info.textContent = "Chưa chọn ảnh."; return; }
-    if (!mkHole || mkHole.w < 1 || mkHole.h < 1) { info.textContent = "Kéo chuột trên ảnh để khoanh vùng đặt ảnh/khuôn mặt."; return; }
-    var cv = mkCanvas();
-    var fx = (mkHole.x / cv.width * 100), fy = (mkHole.y / cv.height * 100);
-    var fw = (mkHole.w / cv.width * 100), fh = (mkHole.h / cv.height * 100);
-    info.textContent = "Vùng: " + fw.toFixed(0) + "% × " + fh.toFixed(0) + "% — tại (" + fx.toFixed(0) + "%, " + fy.toFixed(0) + "%).";
+    if (!mkHoles.length) { info.textContent = "Kéo chuột trên ảnh để khoanh từng vùng đặt ảnh/khuôn mặt."; return; }
+    info.textContent = "Đã có " + mkHoles.length + " ô (Ảnh 1 → ô 1…). Kéo thêm để tạo ô mới, sửa tên ở danh sách bên dưới.";
   }
   /* Translate a pointer event to canvas-internal px (handles CSS scaling). */
   function mkEventToCanvas(e) {
@@ -860,29 +903,38 @@
   function mkRectFrom(a, b) {
     return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
   }
-  /* AI tự dò khuôn mặt mẫu trong thiết kế → đặt "ô mặt" tự động (dùng face-circle.js).
-     Shop khỏi kéo tay; vẫn kéo lại được nếu muốn. Không thấy mặt → để kéo tay. */
-  function mkAutoDetect(file) {
-    if (!window.detectFaceCircle || !file) return;
+  /* AI dò TẤT CẢ khuôn mặt mẫu trong thiết kế → tạo một "ô mặt" cho mỗi mặt
+     (dùng detectAllFaceCircles trong face-circle.js). Không thấy mặt → để kéo tay. */
+  function mkAutoDetectAll(file, fromButton) {
+    if (!window.detectAllFaceCircles || !file) return;
     var info = $("mkHoleInfo"), theFile = file;
+    if (mkHoles.length && fromButton && !confirm("AI sẽ thay thế " + mkHoles.length + " ô hiện có bằng các ô mới dò được. Tiếp tục?")) return;
     if (info) info.textContent = "🤖 Đang dò khuôn mặt bằng AI…";
-    window.detectFaceCircle(file, { size: 256, padding: 0.85 }).then(function (fr) {
+    window.detectAllFaceCircles(file, { padding: 0.85 }).then(function (fr) {
       var cur = $("mkFile").files && $("mkFile").files[0];
       if (mkImg == null || cur !== theFile) return; // ảnh đã đổi trong lúc dò
-      if (fr && fr.found && fr.circle) {
-        var c = fr.circle, cv = mkCanvas();
-        var x = Math.max(0, (c.cx - c.r) * mkScale), y = Math.max(0, (c.cy - c.r) * mkScale);
-        var s = c.r * 2 * mkScale;
-        mkHole = { x: x, y: y, w: Math.min(s, cv.width - x), h: Math.min(s, cv.height - y) };
-        var rc = $("mkRound"); if (rc) rc.checked = true;
-        var ov = $("mkOverlay"); if (ov) ov.hidden = false;
-        mkPositionOverlay(mkHole);
-        if (info) info.textContent = "🤖 AI đã đặt ô mặt tự động (" + (fr.engine || "ai") + "). Kéo để chỉnh nếu cần.";
+      var cv = mkCanvas();
+      var faces = (fr && fr.faces) ? fr.faces : [];
+      var iw = (fr && fr.imgW) || (mkImg.naturalWidth || mkImg.width);
+      var ih = (fr && fr.imgH) || (mkImg.naturalHeight || mkImg.height);
+      if (faces.length) {
+        var holes = [];
+        for (var i = 0; i < faces.length; i++) {
+          var c = faces[i].circle; if (!c) continue;
+          var x = (c.cx - c.r) / iw * cv.width, y = (c.cy - c.r) / ih * cv.height;
+          var w = 2 * c.r / iw * cv.width, h = 2 * c.r / ih * cv.height;
+          x = Math.max(0, Math.min(cv.width, x)); y = Math.max(0, Math.min(cv.height, y));
+          w = Math.min(w, cv.width - x); h = Math.min(h, cv.height - y);
+          holes.push({ x: x, y: y, w: w, h: h, round: true, label: "Ô " + (holes.length + 1) });
+        }
+        mkHoles = holes; mkActive = holes.length ? 0 : -1;
+        mkRenderOverlays(); mkRenderList();
+        if (info) info.textContent = "🤖 AI thấy " + holes.length + " khuôn mặt — đã tạo " + holes.length + " ô (kéo để chỉnh, sửa tên ở danh sách).";
       } else if (info) {
-        info.textContent = "AI chưa thấy mặt rõ — hãy kéo chuột trên ảnh để khoanh ô.";
+        info.textContent = "AI chưa thấy mặt rõ — hãy kéo chuột trên ảnh để khoanh từng ô.";
       }
     }).catch(function () {
-      if (info) info.textContent = "Kéo chuột trên ảnh để khoanh vùng đặt ảnh/khuôn mặt.";
+      if (info) info.textContent = "Kéo chuột trên ảnh để khoanh từng vùng đặt ảnh/khuôn mặt.";
     });
   }
   function mkLoadFile(file) {
@@ -900,12 +952,12 @@
         var cv = mkCanvas();
         cv.width = Math.round(nw * mkScale);
         cv.height = Math.round(nh * mkScale);
-        mkHole = null; mkDrag = null;
+        mkHoles = []; mkActive = -1; mkDrag = null; mkDrawing = null;
         mkRedrawBase();
-        var ov = $("mkOverlay"); if (ov) ov.hidden = true;
+        mkRenderOverlays(); mkRenderList();
         var ph = $("mkPlaceholder"); if (ph) ph.hidden = true;
         mkUpdateHoleInfo();
-        mkAutoDetect(file);
+        mkAutoDetectAll(file, false);
       };
       img.onerror = function () { $("mkErr").textContent = "Không tải được ảnh đã chọn."; };
       img.src = ev.target.result;
@@ -916,6 +968,12 @@
 
   var mkFileInput = $("mkFile");
   if (mkFileInput) mkFileInput.addEventListener("change", function () { mkLoadFile(this.files && this.files[0]); });
+  var mkAiAllBtn = $("mkAiAll");
+  if (mkAiAllBtn) mkAiAllBtn.addEventListener("click", function () {
+    var file = $("mkFile").files && $("mkFile").files[0];
+    if (!file || !mkImg) { $("mkErr").textContent = "Hãy chọn ảnh thiết kế trước."; return; }
+    mkAutoDetectAll(file, true);
+  });
 
   var mkStage = $("mkStage");
   if (mkStage) {
@@ -923,20 +981,25 @@
       if (!mkImg) return;
       e.preventDefault();
       mkDrag = mkEventToCanvas(e);
-      mkHole = { x: mkDrag.x, y: mkDrag.y, w: 0, h: 0 };
-      mkPositionOverlay(mkHole);
+      mkDrawing = { x: mkDrag.x, y: mkDrag.y, w: 0, h: 0 };
+      mkRenderOverlays();
     }
     function mkMove(e) {
       if (!mkDrag) return;
       e.preventDefault();
-      mkHole = mkRectFrom(mkDrag, mkEventToCanvas(e));
-      mkPositionOverlay(mkHole);
+      mkDrawing = mkRectFrom(mkDrag, mkEventToCanvas(e));
+      mkRenderOverlays();
     }
     function mkUp() {
       if (!mkDrag) return;
       mkDrag = null;
-      if (!mkHole || mkHole.w < 4 || mkHole.h < 4) { mkHole = null; var ov = $("mkOverlay"); if (ov) ov.hidden = true; }
-      mkUpdateHoleInfo();
+      if (mkDrawing && mkDrawing.w >= 4 && mkDrawing.h >= 4) {
+        mkHoles.push({ x: mkDrawing.x, y: mkDrawing.y, w: mkDrawing.w, h: mkDrawing.h,
+          round: !!($("mkRound") && $("mkRound").checked), label: "" });
+        mkActive = mkHoles.length - 1;
+      }
+      mkDrawing = null;
+      mkRenderOverlays(); mkRenderList(); mkUpdateHoleInfo();
     }
     mkStage.addEventListener("mousedown", mkDown);
     document.addEventListener("mousemove", mkMove);
@@ -945,17 +1008,14 @@
     mkStage.addEventListener("touchmove", mkMove, { passive: false });
     mkStage.addEventListener("touchend", mkUp);
   }
-  /* Round toggle re-styles the live overlay immediately */
-  var mkRoundChk = $("mkRound");
-  if (mkRoundChk) mkRoundChk.addEventListener("change", function () { if (mkHole) mkPositionOverlay(mkHole); });
-  /* Keep overlay aligned to the canvas if the panel reflows */
-  window.addEventListener("resize", function () { if (mkHole && !$("mkStage").closest(".view").hidden) mkPositionOverlay(mkHole); });
+  /* Keep overlays aligned to the canvas if the panel reflows */
+  window.addEventListener("resize", function () { var st = $("mkStage"); if (mkHoles.length && st && st.closest(".view") && !st.closest(".view").hidden) mkRenderOverlays(); });
 
   function mkResetForm() {
     var f = $("mkForm"); if (f) f.reset();
-    mkImg = null; mkHole = null; mkDrag = null; mkScale = 1;
+    mkImg = null; mkHoles = []; mkActive = -1; mkDrag = null; mkDrawing = null; mkScale = 1;
     var cv = mkCanvas(); if (cv) { cv.width = 360; cv.height = 240; var ctx = cv.getContext("2d"); if (ctx) ctx.clearRect(0, 0, cv.width, cv.height); }
-    var ov = $("mkOverlay"); if (ov) ov.hidden = true;
+    mkRenderOverlays(); mkRenderList();
     var ph = $("mkPlaceholder"); if (ph) ph.hidden = false;
     $("mkErr").textContent = "";
     mkUpdateHoleInfo();
@@ -972,26 +1032,36 @@
     if (!name) { err.textContent = "Vui lòng nhập tên mockup."; $("mkName").focus(); return; }
     if (!file) { err.textContent = "Vui lòng chọn ảnh thiết kế."; $("mkFile").focus(); return; }
     if (!mkImg) { err.textContent = "Ảnh chưa sẵn sàng — hãy chọn lại."; return; }
-    if (!mkHole || mkHole.w < 4 || mkHole.h < 4) { err.textContent = "Hãy kéo chuột trên ảnh để khoanh vùng đặt ảnh/khuôn mặt."; return; }
+    if (!mkHoles.length) { err.textContent = "Hãy kéo chuột trên ảnh để khoanh ít nhất một vùng đặt ảnh/khuôn mặt."; return; }
     var cv = mkCanvas();
-    /* normalize hole rect → 0..1 fractions of the design image */
-    var hx = mkHole.x / cv.width, hy = mkHole.y / cv.height;
-    var hw = mkHole.w / cv.width, hh = mkHole.h / cv.height;
-    hx = Math.max(0, Math.min(1, hx)); hy = Math.max(0, Math.min(1, hy));
-    hw = Math.max(0, Math.min(1 - hx, hw)); hh = Math.max(0, Math.min(1 - hy, hh));
-    var round = ($("mkRound") && $("mkRound").checked) ? "1" : "0";
+    /* normalize every hole rect → 0..1 fractions of the design image (clamped in-bounds) */
+    var holesArr = [];
+    for (var i = 0; i < mkHoles.length; i++) {
+      var mh = mkHoles[i];
+      if (mh.w < 4 || mh.h < 4) continue;
+      var hx = mh.x / cv.width, hy = mh.y / cv.height;
+      var hw = mh.w / cv.width, hh = mh.h / cv.height;
+      hx = Math.max(0, Math.min(1, hx)); hy = Math.max(0, Math.min(1, hy));
+      hw = Math.max(0, Math.min(1 - hx, hw)); hh = Math.max(0, Math.min(1 - hy, hh));
+      holesArr.push({ x: +hx.toFixed(4), y: +hy.toFixed(4), w: +hw.toFixed(4), h: +hh.toFixed(4),
+        round: !!mh.round, label: (mh.label || "") });
+    }
+    if (!holesArr.length) { err.textContent = "Vùng quá nhỏ — hãy kéo to hơn để khoanh ô."; return; }
+    var first = holesArr[0];
     var showText = ($("mkShowText") && $("mkShowText").checked) ? "1" : "0";
 
     var fd = new FormData();
     fd.append("name", name);
-    fd.append("holeX", hx.toFixed(4)); fd.append("holeY", hy.toFixed(4));
-    fd.append("holeW", hw.toFixed(4)); fd.append("holeH", hh.toFixed(4));
-    fd.append("round", round); fd.append("showText", showText);
-    /* default-center the text anchors (below the hole), used only when showText=1 */
-    var cxHole = (hx + hw / 2).toFixed(4);
-    fd.append("titleX", cxHole); fd.append("titleY", Math.min(0.96, hy + hh + 0.06).toFixed(4));
-    fd.append("nameX", cxHole); fd.append("nameY", Math.min(0.98, hy + hh + 0.14).toFixed(4));
-    fd.append("subX", cxHole); fd.append("subY", Math.min(0.99, hy + hh + 0.20).toFixed(4));
+    fd.append("holes", JSON.stringify(holesArr));
+    /* legacy single-hole fields = first hole, for back-compat safety */
+    fd.append("holeX", first.x.toFixed(4)); fd.append("holeY", first.y.toFixed(4));
+    fd.append("holeW", first.w.toFixed(4)); fd.append("holeH", first.h.toFixed(4));
+    fd.append("round", first.round ? "1" : "0"); fd.append("showText", showText);
+    /* default-center the text anchors (below the first hole), used only when showText=1 */
+    var cxHole = (first.x + first.w / 2).toFixed(4);
+    fd.append("titleX", cxHole); fd.append("titleY", Math.min(0.96, first.y + first.h + 0.06).toFixed(4));
+    fd.append("nameX", cxHole); fd.append("nameY", Math.min(0.98, first.y + first.h + 0.14).toFixed(4));
+    fd.append("subX", cxHole); fd.append("subY", Math.min(0.99, first.y + first.h + 0.20).toFixed(4));
     fd.append("image", file, file.name);
 
     var btn = $("mkSubmit"); var label = btn ? btn.textContent : "";
@@ -1032,16 +1102,23 @@
     m = m || {};
     var id = m.id;
     var img = (typeof m.image === "string" && m.image) ? m.image : ("/api/mockups/" + encodeURIComponent(id) + "/image");
-    var h = m.hole || {};
-    /* hole overlay as % of the thumbnail (object-fit:contain means hole sits over the image box) */
+    var holes = (m.holes && m.holes.length) ? m.holes : (m.hole ? [m.hole] : []);
+    /* hole overlays as % of the thumbnail (object-fit:contain means holes sit over the image box) */
     var holeBox = "";
-    if (typeof h.x === "number" && typeof h.y === "number" && typeof h.w === "number" && typeof h.h === "number") {
+    var roundCount = 0;
+    for (var i = 0; i < holes.length; i++) {
+      var h = holes[i] || {};
+      if (typeof h.x !== "number" || typeof h.y !== "number" || typeof h.w !== "number" || typeof h.h !== "number") continue;
+      if (h.round) roundCount++;
       var cls = h.round ? " is-round" : "";
-      holeBox = '<div class="mk-hole' + cls + '" style="left:' + (h.x * 100).toFixed(2) + "%;top:" + (h.y * 100).toFixed(2) +
-        "%;width:" + (h.w * 100).toFixed(2) + "%;height:" + (h.h * 100).toFixed(2) + '%"></div>';
+      holeBox += '<div class="mk-hole' + cls + '" style="left:' + (h.x * 100).toFixed(2) + "%;top:" + (h.y * 100).toFixed(2) +
+        "%;width:" + (h.w * 100).toFixed(2) + "%;height:" + (h.h * 100).toFixed(2) + '%">' +
+        '<span class="mk-num">' + (i + 1) + "</span></div>";
     }
     var meta = [];
-    meta.push('<span>' + (h.round ? "🔵 Tròn" : "▭ Chữ nhật") + "</span>");
+    meta.push("<span>🖼️ " + holes.length + " ô thay ảnh</span>");
+    if (roundCount) meta.push("<span>🔵 " + roundCount + " tròn</span>");
+    if (holes.length - roundCount > 0) meta.push("<span>▭ " + (holes.length - roundCount) + " chữ nhật</span>");
     if (m.showText) meta.push("<span>🅰️ Có chữ</span>");
     return '<article class="mk-card">' +
       '<div class="mk-thumb-wrap"><img src="' + esc(img) + '" alt="" loading="lazy">' + holeBox + "</div>" +

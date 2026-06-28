@@ -1,9 +1,10 @@
 /* ============================================================
    DALI PARTY — Banner builder (trang /tao-banner)
-   Khách chọn mẫu → tải ảnh bé → AI tách nền (rembg trên VPS) →
-   ghép cảnh trên canvas → gửi yêu cầu cho shop.
-   Backend: POST /api/banner/remove-bg, POST /api/banner/request.
-   Nếu backend chưa sống → tự fallback dùng ảnh gốc (không tách nền).
+   Khách chọn mẫu → mỗi mẫu có 1 HOẶC NHIỀU lỗ ảnh → tải ảnh riêng cho từng ô
+   (Ảnh 1 → ô 1, Ảnh 2 → ô 2…) → ảnh tự cắt mặt tròn cho lỗ mặt → ghép cảnh
+   trên canvas → gửi tất cả ảnh kèm chỉ số lỗ cho shop.
+   Backend: POST /api/banner/request (photos[] + photoSlots).
+   Ô để trống → giữ nguyên mặt mẫu gốc. Backend chưa sống → giữ mẫu vẽ fallback.
 
    v3 — Mockup "thay mặt bé": garland bóng bay pastel+vàng, phông arch
    màu nước, sao/lấp lánh, số tuổi foil vàng, nhân vật dễ thương.
@@ -70,20 +71,32 @@
   // TEMPLATES = bộ mẫu ĐANG dùng cho gallery. Mặc định = mẫu vẽ fallback;
   // sẽ được thay bằng mẫu ẢNH NỀN lấy từ /api/mockups nếu backend có dữ liệu.
   var TEMPLATES = FALLBACK_TEMPLATES;
-  var SLOT = { x: 0.265, y: 0.415, w: 0.58, h: 0.47 }; // khung ảnh mặc định (tỉ lệ canvas)
+  var SLOT = { x: 0.265, y: 0.415, w: 0.58, h: 0.47, round: false }; // khung ảnh mặc định (tỉ lệ canvas)
 
   var state = {
     tpl: TEMPLATES[0],
-    img: null,            // ảnh đang hiển thị trong khung
-    photoBlob: null,      // ảnh gốc (blob) để gửi shop
-    cutoutBlob: null,     // ảnh đã tách nền (blob) nếu có
-    mode: "full",         // "full" = cả người | "face" = thay mặt (cắt mặt tròn)
-    fullImg: null,        // ảnh chế độ "cả người" (cutout nếu có, không thì ảnh gốc)
-    faceImg: null,        // canvas mặt tròn (chế độ "thay mặt")
-    tf: { scale: 1, dx: 0, dy: 0 },
+    slots: [],            // 1 entry / lỗ của mẫu hiện tại — xem makeSlots()
+    active: -1,           // chỉ số ô đang chỉnh (-1 = chưa chọn)
     name: "", date: "", age: "",
     sent: false
   };
+
+  // Danh sách lỗ của 1 mẫu: ảnh nền (holes[]) hoặc mẫu vẽ (1 lỗ = tpl.hole | SLOT).
+  function holesOf(tpl) {
+    if (tpl && tpl.holes && tpl.holes.length) return tpl.holes;
+    if (tpl && tpl.hole) return [tpl.hole];
+    return [{ x: SLOT.x, y: SLOT.y, w: SLOT.w, h: SLOT.h, round: false }];
+  }
+  // Tạo lại state.slots khi đổi mẫu (mỗi lỗ 1 entry rỗng).
+  function makeSlots(tpl) {
+    var hs = holesOf(tpl), arr = [], i;
+    for (i = 0; i < hs.length; i++) {
+      arr.push({ photoBlob: null, faceImg: null, fullImg: null, img: null,
+                 tf: { scale: 1, dx: 0, dy: 0 }, status: "", statusCls: "" });
+    }
+    state.slots = arr;
+    state.active = -1;
+  }
 
   /* ---------- ảnh nền mẫu: nạp lười + cache ---------- */
   var bgCache = {}; // path -> { img, ok, loading }
@@ -115,10 +128,8 @@
     ctx.arcTo(x, y, x + rTop, y, rTop);
     ctx.closePath();
   }
-  function slotRect(tpl) {
-    var hole = tpl && tpl.hole;
-    if (hole) return { x: hole.x * W, y: hole.y * H, w: hole.w * W, h: hole.h * H, round: !!hole.round };
-    return { x: SLOT.x * W, y: SLOT.y * H, w: SLOT.w * W, h: SLOT.h * H, round: false };
+  function holeRect(hole) {
+    return { x: hole.x * W, y: hole.y * H, w: hole.w * W, h: hole.h * H, round: !!hole.round };
   }
   function fitFont(text, max, weight, family) {
     var size = 130;
@@ -240,37 +251,53 @@
     ctx.restore();
   }
 
-  /* ---------- vẽ ảnh/mặt bé vào "lỗ" ---------- */
-  function drawPhotoHole(s) {
-    ctx.save();
-    if (s.round) {
-      var cr = Math.min(s.w, s.h) / 2;
-      ctx.beginPath(); ctx.arc(s.x + s.w / 2, s.y + s.h / 2, cr, 0, Math.PI * 2); ctx.clip();
-    } else {
-      rr(s.x, s.y, s.w, s.h, 28); ctx.clip();
-    }
-    if (state.img) {
-      var iw = state.img.naturalWidth || state.img.width;
-      var ih = state.img.naturalHeight || state.img.height;
+  /* ---------- vẽ ảnh/mặt bé vào "lỗ" ----------
+     s = hình chữ nhật của lỗ (px) + round; slot = entry state.slots[i] (img + tf).
+     slot == null hoặc slot.img == null → KHÔNG vẽ gì (giữ nguyên mặt mẫu gốc),
+     trừ placeholder gợi ý cho mẫu vẽ programmatic (showPlaceholder=true).            */
+  function drawPhotoHole(s, slot, showPlaceholder) {
+    if (slot && slot.img) {
+      ctx.save();
+      if (s.round) {
+        var cr = Math.min(s.w, s.h) / 2;
+        ctx.beginPath(); ctx.arc(s.x + s.w / 2, s.y + s.h / 2, cr, 0, Math.PI * 2); ctx.clip();
+      } else {
+        rr(s.x, s.y, s.w, s.h, 28); ctx.clip();
+      }
+      var iw = slot.img.naturalWidth || slot.img.width;
+      var ih = slot.img.naturalHeight || slot.img.height;
       var b = Math.max(s.w / iw, s.h / ih);
-      var sc = b * state.tf.scale;
+      var sc = b * slot.tf.scale;
       var dw = iw * sc, dh = ih * sc;
-      ctx.drawImage(state.img, s.x + s.w / 2 - dw / 2 + state.tf.dx, s.y + s.h / 2 - dh / 2 + state.tf.dy, dw, dh);
-    } else {
+      ctx.drawImage(slot.img, s.x + s.w / 2 - dw / 2 + slot.tf.dx, s.y + s.h / 2 - dh / 2 + slot.tf.dy, dw, dh);
+      ctx.restore();
+      // viền trắng
+      ctx.save();
+      if (s.round) {
+        var cr2 = Math.min(s.w, s.h) / 2;
+        ctx.beginPath(); ctx.arc(s.x + s.w / 2, s.y + s.h / 2, cr2, 0, Math.PI * 2);
+      } else { rr(s.x, s.y, s.w, s.h, 28); }
+      ctx.lineWidth = s.round ? 10 : 6; ctx.strokeStyle = "#fff"; ctx.stroke();
+      ctx.restore();
+    } else if (showPlaceholder) {
+      ctx.save();
+      if (s.round) {
+        var cr3 = Math.min(s.w, s.h) / 2;
+        ctx.beginPath(); ctx.arc(s.x + s.w / 2, s.y + s.h / 2, cr3, 0, Math.PI * 2); ctx.clip();
+      } else { rr(s.x, s.y, s.w, s.h, 28); ctx.clip(); }
       ctx.fillStyle = "rgba(0,0,0,.05)"; ctx.fillRect(s.x, s.y, s.w, s.h);
       ctx.fillStyle = "rgba(0,0,0,.30)"; ctx.font = "600 30px 'Be Vietnam Pro', sans-serif";
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText("📷 Ảnh bé", s.x + s.w / 2, s.y + s.h / 2);
+      ctx.restore();
+      ctx.save();
+      if (s.round) {
+        var cr4 = Math.min(s.w, s.h) / 2;
+        ctx.beginPath(); ctx.arc(s.x + s.w / 2, s.y + s.h / 2, cr4, 0, Math.PI * 2);
+      } else { rr(s.x, s.y, s.w, s.h, 28); }
+      ctx.lineWidth = s.round ? 10 : 6; ctx.strokeStyle = "#fff"; ctx.stroke();
+      ctx.restore();
     }
-    ctx.restore();
-    // viền trắng
-    ctx.save();
-    if (s.round) {
-      var cr2 = Math.min(s.w, s.h) / 2;
-      ctx.beginPath(); ctx.arc(s.x + s.w / 2, s.y + s.h / 2, cr2, 0, Math.PI * 2);
-    } else { rr(s.x, s.y, s.w, s.h, 28); }
-    ctx.lineWidth = s.round ? 10 : 6; ctx.strokeStyle = "#fff"; ctx.stroke();
-    ctx.restore();
   }
 
   /* ---------- số tuổi foil vàng ---------- */
@@ -360,11 +387,12 @@
         ctx.font = "600 30px 'Be Vietnam Pro', sans-serif";
         ctx.fillText(be.loading ? "đang tải mẫu…" : "(thiếu ảnh mẫu)", W / 2, H / 2 - 40);
       }
-      var s = slotRect(t);
-      // Chế độ "thay mặt": luôn cắt mặt bé thành hình tròn trong lỗ
-      // (kể cả khi lỗ vốn vuông). "Cả người": tôn trọng hole.round.
-      if (state.mode === "face") s.round = true;
-      drawPhotoHole(s);
+      // LOOP các lỗ: mỗi lỗ vẽ ảnh của slot tương ứng (nếu có). Lỗ trống → để
+      // nguyên mặt mẫu gốc (không vẽ gì).
+      var hs = holesOf(t), hi;
+      for (hi = 0; hi < hs.length; hi++) {
+        drawPhotoHole(holeRect(hs[hi]), state.slots[hi], false);
+      }
       // showText !== false → vẽ chữ; cần có anchor (item.anchor có thể null).
       if (t.showText !== false) {
         var anchor = t.anchor || { title: { x: .5, y: .20 }, name: { x: .5, y: .30 }, sub: { x: .5, y: .37 } };
@@ -401,10 +429,9 @@
     var anchorA = { title: { x: .5, y: (cy + 130) / H }, name: { x: .5, y: (cy + 250) / H }, sub: { x: .5, y: (cy + 322) / H } };
     drawTexts(t, anchorA);
 
-    // 6. khung ảnh / mặt bé
-    var sA = slotRect(t);
-    sA.round = (state.mode === "face");
-    drawPhotoHole(sA);
+    // 6. khung ảnh / mặt bé (mẫu vẽ = 1 lỗ duy nhất, có placeholder gợi ý)
+    var sA = holeRect(holesOf(t)[0]);
+    drawPhotoHole(sA, state.slots[0], true);
 
     // 7. số tuổi foil vàng (nếu là số)
     if (/^\d{1,2}$/.test(esc(state.age).trim())) {
@@ -441,7 +468,10 @@
       b.innerHTML = sw + "<small>" + esc(t.name) + "</small>";
       b.addEventListener("click", function () {
         state.tpl = t;
+        makeSlots(t);
         [].forEach.call(tplWrap.children, function (c) { c.classList.toggle("active", c.dataset.tpl === t.id); });
+        renderSlots();
+        updateZoomUI();
         render();
       });
       tplWrap.appendChild(b);
@@ -451,11 +481,13 @@
 
   /* ---------- nạp mẫu ẢNH NỀN từ kho /api/mockups (degrade gracefully) ---------- */
   function buildTplFromMockup(m) {
+    var holes = (m.holes && m.holes.length) ? m.holes : (m.hole ? [m.hole] : []);
     return {
       id: m.id,
       name: m.name || "Mẫu",
       bg: m.image,                       // URL same-origin (vd "/api/mockups/<id>/image")
-      hole: m.hole,                      // {x,y,w,h,round} (0..1)
+      holes: holes,                      // [{x,y,w,h,round,label}, ...] (0..1) — theo thứ tự Ảnh 1, 2…
+      hole: holes[0],                    // tương thích ngược (lỗ đầu tiên)
       anchor: m.anchor || null,          // {title,name,sub} (0..1) hoặc null
       showText: m.showText !== false,    // mặc định hiện chữ
       ink: m.ink || "#333",
@@ -467,12 +499,16 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) {
         var items = j && Array.isArray(j.items) ? j.items : [];
-        // chỉ lấy mẫu có ảnh + lỗ hợp lệ
-        var tpls = items.filter(function (m) { return m && m.image && m.hole; }).map(buildTplFromMockup);
+        // chỉ lấy mẫu có ảnh + ÍT NHẤT một lỗ hợp lệ
+        var tpls = items.filter(function (m) {
+          return m && m.image && ((m.holes && m.holes.length) || m.hole);
+        }).map(buildTplFromMockup);
         if (!tpls.length) return; // backend rỗng/down → giữ nguyên mẫu vẽ fallback
         TEMPLATES = tpls;
         state.tpl = TEMPLATES[0]; // mặc định chọn mẫu đầu
+        makeSlots(state.tpl);
         renderGallery();
+        renderSlots();
         render();
       })
       .catch(function () { /* backend chưa sống → im lặng, giữ mẫu fallback */ });
@@ -490,82 +526,154 @@
   }
   function setStatus(msg, cls) { var el = $("bbPhotoStatus"); el.textContent = msg || ""; el.className = "bb-status" + (cls ? " " + cls : ""); }
 
-  $("bbPhoto").addEventListener("change", async function (e) {
-    var file = e.target.files && e.target.files[0];
-    if (!file) return;
-    if (file.size > 12 * 1024 * 1024) { setStatus("Ảnh quá lớn (tối đa 12MB).", "err"); return; }
-    state.photoBlob = file; state.cutoutBlob = null; state.faceImg = null; state.mode = "full";
-    state.tf = { scale: 1, dx: 0, dy: 0 }; $("bbZoom").value = 1;
-    var fullR = document.querySelector('input[name=bbmode][value=full]'); if (fullR) fullR.checked = true;
-    try { state.fullImg = state.img = await loadImg(file); } catch (err) { setStatus("Không đọc được ảnh.", "err"); return; }
-    $("bbZoomWrap").hidden = false; $("bbModeWrap").hidden = false;
-    $("bbHint").textContent = "Kéo ảnh trong khung để chỉnh vị trí.";
-    render();
-    if (window.DaliFace && window.DaliFace.ensureMediaPipe) window.DaliFace.ensureMediaPipe().catch(function () {}); // làm nóng model mặt
-    // AI tách nền cả người (chế độ "Cả người") — cần backend; không có thì dùng ảnh gốc
-    setStatus("🪄 Đang tách nền bằng AI…", "busy");
-    try {
-      var fd = new FormData(); fd.append("file", file, "photo.png");
-      var r = await fetch("/api/banner/remove-bg", { method: "POST", body: fd });
-      if (!r.ok) throw new Error("bg " + r.status);
-      var cut = await r.blob();
-      if (!cut || cut.size < 100) throw new Error("empty");
-      state.cutoutBlob = cut; state.fullImg = await loadImg(cut);
-      if (state.mode === "full") { state.img = state.fullImg; render(); }
-      setStatus("✅ Đã tách nền xong.", "ok");
-    } catch (err) {
-      setStatus("Dùng ảnh gốc (chưa tách được nền). Bạn vẫn gửi yêu cầu bình thường nhé.", "");
-    }
-  });
-
-  /* ---- chế độ Cả người / Thay mặt (cắt mặt tròn, chạy trên trình duyệt) ---- */
-  function applyMode() {
-    state.tf = { scale: 1, dx: 0, dy: 0 }; $("bbZoom").value = 1;
-    state.img = (state.mode === "face" && state.faceImg) ? state.faceImg : state.fullImg;
-    render();
+  /* ============================================================
+     UI Ô ẢNH (mỗi lỗ = 1 hàng "Ảnh n")
+     ============================================================ */
+  var slotsWrap = $("bbSlots");
+  var faceWarmed = false;
+  // nhãn 1 lỗ: ưu tiên hole.label; mẫu vẽ 1 lỗ → "Ảnh bé".
+  function slotLabel(tpl, hole, i, n) {
+    if (n === 1 && typeof tpl.bg !== "string") return "Ảnh bé";
+    return "Ảnh " + (i + 1) + " · " + (hole.label || ("Ô " + (i + 1)));
   }
-  [].forEach.call(document.querySelectorAll('input[name=bbmode]'), function (radio) {
-    radio.addEventListener("change", async function () {
-      if (!this.checked) return;
-      if (this.value === "face") {
-        state.mode = "face";
-        if (!state.faceImg) {
-          if (!window.detectFaceCircle || !state.photoBlob) { setStatus("Chưa sẵn sàng cắt mặt.", "err"); return; }
-          setStatus("🙂 Đang tự cắt mặt bé…", "busy");
-          try {
-            var fr = await window.detectFaceCircle(state.photoBlob, { size: 512, padding: 0.85 });
-            state.faceImg = fr.canvas;
-            setStatus(fr.found ? "✅ Đã cắt mặt tự động (" + fr.engine + ")." : "Chưa thấy mặt rõ — dùng vòng giữa, kéo/phóng để chỉnh.", fr.found ? "ok" : "");
-          } catch (e2) {
-            setStatus("Chưa cắt được mặt (nên dùng ảnh chụp thẳng, rõ mặt, nền đơn giản).", "err");
-            state.mode = "full";
-            var fr2 = document.querySelector('input[name=bbmode][value=full]'); if (fr2) fr2.checked = true;
-            applyMode(); return;
-          }
+  function renderSlots() {
+    if (!slotsWrap) return;
+    slotsWrap.innerHTML = "";
+    var tpl = state.tpl, hs = holesOf(tpl), n = hs.length, i;
+    for (i = 0; i < n; i++) {
+      (function (idx) {
+        var hole = hs[idx], slot = state.slots[idx] || {};
+        var row = document.createElement("div");
+        row.className = "bb-slot" + (idx === state.active ? " active" : "") + (slot.img ? " filled" : "");
+        var thumbBg = "";
+        if (slot.photoBlob) {
+          // create the thumbnail object URL ONCE per slot photo (revoked in clearSlot /
+          // on re-upload) — don't leak a new URL on every renderSlots() call.
+          if (!slot.thumbUrl) { try { slot.thumbUrl = URL.createObjectURL(slot.photoBlob); } catch (e) {} }
+          if (slot.thumbUrl) thumbBg = "background-image:url('" + slot.thumbUrl + "')";
         }
-      } else { state.mode = "full"; }
-      applyMode();
+        var sub = slot.status
+          ? '<span class="bb-slot-sub ' + (slot.statusCls || "") + '">' + esc(slot.status) + "</span>"
+          : '<span class="bb-slot-sub">' + (slot.img ? "✓ đã có ảnh" : "chưa có ảnh") + "</span>";
+        row.innerHTML =
+          '<span class="bb-thumb" style="' + thumbBg + '">' + (slot.img ? "" : "📷") + "</span>" +
+          '<span class="bb-slot-body">' +
+            '<span class="bb-slot-label">' + esc(slotLabel(tpl, hole, idx, n)) + "</span>" + sub +
+          "</span>" +
+          '<label class="bb-slot-pick">Tải ảnh<input type="file" accept="image/*" hidden></label>' +
+          (slot.img ? '<button type="button" class="bb-slot-del">✕ xoá</button>' : "");
+        // chọn ô (highlight + hiện zoom)
+        row.addEventListener("click", function (ev) {
+          if (ev.target.tagName === "INPUT" || ev.target.closest(".bb-slot-pick") || ev.target.closest(".bb-slot-del")) return;
+          setActive(idx);
+        });
+        // tải ảnh cho ô
+        var input = row.querySelector(".bb-slot-pick input");
+        input.addEventListener("change", function (e) {
+          var file = e.target.files && e.target.files[0];
+          if (file) uploadSlot(idx, file);
+        });
+        // xoá ảnh ô
+        var del = row.querySelector(".bb-slot-del");
+        if (del) del.addEventListener("click", function () { clearSlot(idx); });
+        slotsWrap.appendChild(row);
+      })(i);
+    }
+  }
+
+  function setActive(idx) {
+    state.active = idx;
+    renderSlots();
+    updateZoomUI();
+  }
+  function updateZoomUI() {
+    var slot = state.active >= 0 ? state.slots[state.active] : null;
+    var show = !!(slot && slot.img);
+    $("bbZoomWrap").hidden = !show;
+    if (show) $("bbZoom").value = slot.tf.scale;
+    $("bbHint").textContent = show ? "Kéo ảnh trong khung để chỉnh vị trí ô đang chọn." :
+      ($("bbSlots").querySelector(".bb-slot.filled") ? "Bấm vào một ô để chỉnh ảnh." : "Chọn mẫu & tải ảnh bé để xem trước…");
+  }
+
+  function clearSlot(idx) {
+    var slot = state.slots[idx];
+    if (!slot) return;
+    if (slot.thumbUrl) { URL.revokeObjectURL(slot.thumbUrl); slot.thumbUrl = null; }
+    slot.photoBlob = null; slot.faceImg = null; slot.fullImg = null; slot.img = null;
+    slot.tf = { scale: 1, dx: 0, dy: 0 }; slot.status = ""; slot.statusCls = "";
+    if (state.active === idx) state.active = -1;
+    renderSlots(); updateZoomUI(); render();
+  }
+
+  // tải + auto face-crop ảnh cho 1 ô
+  function uploadSlot(idx, file) {
+    var slot = state.slots[idx];
+    if (!slot) return;
+    if (file.size > 12 * 1024 * 1024) { slot.status = "Ảnh quá lớn (tối đa 12MB)."; slot.statusCls = "err"; renderSlots(); return; }
+    var hole = holesOf(state.tpl)[idx];
+    if (slot.thumbUrl) { URL.revokeObjectURL(slot.thumbUrl); slot.thumbUrl = null; }
+    slot.photoBlob = file; slot.faceImg = null; slot.fullImg = null; slot.img = null;
+    slot.tf = { scale: 1, dx: 0, dy: 0 };
+    state.active = idx;
+    // làm nóng model mặt lần đầu
+    if (!faceWarmed && window.DaliFace && window.DaliFace.ensureMediaPipe) {
+      faceWarmed = true; window.DaliFace.ensureMediaPipe().catch(function () {});
+    }
+    loadImg(file).then(function (im) {
+      slot.fullImg = im;
+      if (hole && hole.round && window.detectFaceCircle) {
+        // lỗ mặt → tự cắt mặt tròn
+        slot.status = "🙂 Đang tự cắt mặt bé…"; slot.statusCls = "busy"; renderSlots();
+        window.detectFaceCircle(file, { size: 512, padding: 0.85 }).then(function (fr) {
+          slot.faceImg = fr.canvas; slot.img = fr.canvas;
+          slot.status = fr.found ? "✅ Đã cắt mặt tự động (" + fr.engine + ")." : "Chưa thấy mặt rõ — kéo/phóng để chỉnh.";
+          slot.statusCls = fr.found ? "ok" : "";
+          renderSlots(); updateZoomUI(); render();
+        }).catch(function () {
+          // không cắt được → dùng ảnh gốc
+          slot.img = slot.fullImg;
+          slot.status = "Dùng ảnh gốc (chưa cắt được mặt) — kéo/phóng để chỉnh."; slot.statusCls = "";
+          renderSlots(); updateZoomUI(); render();
+        });
+      } else {
+        // lỗ thường → dùng ảnh đầy đủ
+        slot.img = slot.fullImg;
+        slot.status = "✅ Đã tải ảnh."; slot.statusCls = "ok";
+        renderSlots(); updateZoomUI(); render();
+      }
+    }).catch(function () {
+      slot.photoBlob = null;
+      slot.status = "Không đọc được ảnh."; slot.statusCls = "err";
+      renderSlots();
     });
+  }
+
+  $("bbZoom").addEventListener("input", function () {
+    var slot = state.active >= 0 ? state.slots[state.active] : null;
+    if (!slot || !slot.img) return;
+    slot.tf.scale = parseFloat(this.value) || 1; render();
   });
 
-  $("bbZoom").addEventListener("input", function () { state.tf.scale = parseFloat(this.value) || 1; render(); });
-
-  /* ---------- kéo ảnh trong khung ---------- */
+  /* ---------- kéo ảnh trong khung (tác động ô đang chọn) ---------- */
   var drag = null;
+  function activeSlot() { return state.active >= 0 ? state.slots[state.active] : null; }
   function pt(e) {
     var r = cv.getBoundingClientRect();
     var src = e.touches ? e.touches[0] : e;
     return { x: (src.clientX - r.left) * (W / r.width), y: (src.clientY - r.top) * (H / r.height) };
   }
   function down(e) {
-    if (!state.img) return;
-    var p = pt(e); drag = { x: p.x, y: p.y, dx: state.tf.dx, dy: state.tf.dy };
+    var slot = activeSlot();
+    if (!slot || !slot.img) return;
+    var p = pt(e); drag = { x: p.x, y: p.y, dx: slot.tf.dx, dy: slot.tf.dy };
     cv.classList.add("dragging"); e.preventDefault();
   }
   function move(e) {
     if (!drag) return;
+    var slot = activeSlot();
+    if (!slot) { drag = null; return; }
     var p = pt(e);
-    state.tf.dx = drag.dx + (p.x - drag.x); state.tf.dy = drag.dy + (p.y - drag.y);
+    slot.tf.dx = drag.dx + (p.x - drag.x); slot.tf.dy = drag.dy + (p.y - drag.y);
     render(); e.preventDefault();
   }
   function up() { drag = null; cv.classList.remove("dragging"); }
@@ -584,7 +692,10 @@
     if (state.sent) return;
     var name = $("bbName").value.trim(), contact = $("bbContact").value.trim();
     if (!name) { result("Vui lòng nhập tên bé.", "err"); $("bbName").focus(); return; }
-    if (!state.photoBlob) { result("Vui lòng tải ảnh bé.", "err"); return; }
+    // cần ÍT NHẤT một ô có ảnh
+    var hasPhoto = false, k;
+    for (k = 0; k < state.slots.length; k++) { if (state.slots[k] && state.slots[k].photoBlob) { hasPhoto = true; break; } }
+    if (!hasPhoto) { result("Vui lòng tải ít nhất một ảnh bé.", "err"); return; }
     if (!contact) { result("Vui lòng nhập SĐT/Zalo để shop liên hệ.", "err"); $("bbContact").focus(); return; }
     this.disabled = true; this.textContent = "Đang gửi…";
     try {
@@ -598,8 +709,16 @@
       fd.append("mockup_name", state.tpl.name || "");
       fd.append("contact", contact);
       fd.append("note", $("bbNote").value.trim());
-      fd.append("photo", state.photoBlob, "photo.png");
-      if (state.cutoutBlob) fd.append("cutout", state.cutoutBlob, "cutout.png");
+      // mỗi ô có ảnh → append "photos" (ẢNH GỐC) theo thứ tự + thu chỉ số lỗ (1-based)
+      var slotsArr = [], si;
+      for (si = 0; si < state.slots.length; si++) {
+        var sl = state.slots[si];
+        if (sl && sl.photoBlob) {
+          fd.append("photos", sl.photoBlob, "photo-" + (si + 1) + ".png");
+          slotsArr.push(si + 1);
+        }
+      }
+      fd.append("photoSlots", JSON.stringify(slotsArr));
       if (comp) fd.append("composite", comp, "composite.png");
       var r = await fetch("/api/banner/request", { method: "POST", body: fd });
       if (!r.ok) throw new Error("req " + r.status);
@@ -622,6 +741,9 @@
   });
 
   /* ---------- khởi tạo ---------- */
+  makeSlots(state.tpl);
+  renderSlots();
+  updateZoomUI();
   render();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(render);
 })();
