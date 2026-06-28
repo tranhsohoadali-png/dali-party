@@ -6,7 +6,7 @@ FastAPI service that powers the customer banner builder:
 - `GET  /api/admin/banner/list` and `/api/admin/banner/{id}/{photo|cutout|composite}` — admin (behind nginx Basic Auth).
 - `POST /api/admin/banner/{id}/status` — update status.
 
-Runs on the VPS at `127.0.0.1:8000`, reverse-proxied by nginx under `/api/`.
+Runs on the VPS at `127.0.0.1:8019`, reverse-proxied by nginx under `/api/`.
 Code lives in the repo (`server/`) and is auto-deployed to `/var/www/dalipart/server`; the
 `dali-deploy` timer restarts `dali-api` when `server/` changes.
 
@@ -25,7 +25,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now dali-api
 
 # nginx: add inside the HTTPS server block (handled separately) —
-#   location = /api/health, location /api/admin/ (auth_basic), location /api/ (limits) -> proxy 127.0.0.1:8000
+#   location = /api/health, location /api/admin/ (auth_basic), location /api/ (limits) -> proxy 127.0.0.1:8019
 ```
 
 Data (uploaded children's photos) is stored in `/var/www/dali-banner-data` — OUTSIDE the

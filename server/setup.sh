@@ -44,26 +44,30 @@ import sys
 p = sys.argv[1]
 s = open(p, encoding='utf-8').read()
 block = '''
-    location = /api/health { proxy_pass http://127.0.0.1:8000; }
+    location = /api/health { proxy_pass http://127.0.0.1:8019; }
     location /api/admin/ {
         auth_basic "Khu vuc quan tri Dali Party";
         auth_basic_user_file /etc/nginx/.dali_admin;
         client_max_body_size 14m;
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8019;
         proxy_set_header Host $host;
         proxy_read_timeout 120s;
     }
     location /api/ {
         client_max_body_size 14m;
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8019;
         proxy_set_header Host $host;
         proxy_read_timeout 120s;
     }
     location ~ ^/(\\.git|server)(/|$) { return 404; }
 '''
 anchor = '    location ~ ^/(.+)\\.html$ {'
-if 'proxy_pass http://127.0.0.1:8000' in s:
+if '127.0.0.1:8019' in s:
     print('NGINX_ALREADY')
+elif '127.0.0.1:8000' in s:
+    # cập nhật cấu hình cũ (đã trỏ 8000) sang cổng mới 8019
+    open(p, 'w', encoding='utf-8').write(s.replace('127.0.0.1:8000', '127.0.0.1:8019'))
+    print('NGINX_PORT_UPDATED')
 elif anchor in s:
     open(p, 'w', encoding='utf-8').write(s.replace(anchor, block + '\n' + anchor, 1))
     print('NGINX_INSERTED')
@@ -73,7 +77,7 @@ PY
 if nginx -t 2>/tmp/dali_ngt; then systemctl reload nginx && echo NGINX_RELOADED; else echo NGINX_FAIL; cat /tmp/dali_ngt; cp /tmp/dalipart.nginx.bak "$NGX" && echo NGINX_RESTORED; fi
 
 echo "[8/8] verify"
-echo -n "health(local): "; curl -s http://127.0.0.1:8000/api/health || echo "(no response)"
+echo -n "health(local): "; curl -s http://127.0.0.1:8019/api/health || echo "(no response)"
 echo
 echo -n "health(public): "; curl -s --resolve dalipart.tranhdali.vn:443:127.0.0.1 https://dalipart.tranhdali.vn/api/health -k 2>/dev/null || echo "(via nginx — check after)"
 echo
