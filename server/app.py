@@ -302,8 +302,14 @@ async def mockup_create(
     if not name:
         raise HTTPException(400, "Thiếu tên mockup.")
 
-    im = _read_image(await image.read())  # validates size/type (re-read below)
-    fmt = (im.format or "").upper()
+    data = await image.read()
+    _read_image(data)  # validates size/type (raises on invalid image)
+    # NOTE: read the real format from the ORIGINAL bytes — _read_image() runs
+    # ImageOps.exif_transpose() which returns an image whose .format is None.
+    try:
+        fmt = (Image.open(io.BytesIO(data)).format or "").upper()
+    except Exception:
+        fmt = ""
     if fmt not in _MOCKUP_TYPES:
         raise HTTPException(400, "Ảnh phải là PNG, JPEG hoặc WEBP.")
     ext, _media = _MOCKUP_TYPES[fmt]
@@ -320,9 +326,8 @@ async def mockup_create(
     mid = uuid.uuid4().hex[:12]
     folder = os.path.join(MOCKUP_DIR, mid)
     os.makedirs(folder, exist_ok=True)
-    await image.seek(0)
     with open(os.path.join(folder, "design." + ext), "wb") as f:
-        f.write(await image.read())
+        f.write(data)
 
     rec = {
         "id": mid,
