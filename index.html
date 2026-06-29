@@ -139,6 +139,7 @@
       html.classList.remove('intro-first');
       if (ov) ov.style.display = 'none';
       document.body.style.overflow = '';
+      var vv = document.getElementById('introVideo'); if (vv) { try { vv.pause(); } catch (e) {} }
     }
     /* gradual=true → "mở ra dần" (overlay phóng + mờ ~1s) khi video sắp hết, để lộ trang web;
        gradual=false → tan nhanh (.7s) khi bấm "Bỏ qua" hoặc lỗi. */
@@ -157,16 +158,17 @@
     /* fallback: nếu autoplay bị chặn, bấm vào màn hình để phát */
     if (ov && v) ov.addEventListener('click', function () { var pr = v.play(); if (pr && pr.catch) pr.catch(function () {}); });
     if (v) {
-      var LEAD = 1.0;   /* bắt đầu "mở ra" 1s trước khi video kết thúc */
+      /* Cắt video ngay sau khi hộp quà BUNG (~3.8s) — TRƯỚC đoạn "trang web giả"
+         do AI dựng ở cuối clip (≈4s→hết). Web THẬT mở ra đúng khoảnh khắc bung. */
+      var CUT = 3.8;
       v.addEventListener('timeupdate', function () {
         if (done) return;
-        var d = v.duration;
-        if (d && isFinite(d) && d - v.currentTime <= LEAD) reveal(true);
+        if (v.currentTime >= CUT) reveal(true);
       });
-      v.addEventListener('ended', function () { reveal(true); });     /* phòng khi timeupdate hụt nhịp */
+      v.addEventListener('ended', function () { reveal(true); });     /* phòng hờ nếu clip ngắn hơn */
       v.addEventListener('error', function () { reveal(false); });
       var p = v.play(); if (p && p.catch) p.catch(function () {});
-      setTimeout(function () { reveal(true); }, 12000);               /* an toàn: tự mở sau 12s */
+      setTimeout(function () { reveal(true); }, 9000);                /* an toàn nếu video bị kẹt */
     } else { reveal(false); }
   })();
 </script>
