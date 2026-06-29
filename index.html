@@ -13,11 +13,15 @@
 <style>
   /* ===== Opening intro (chỉ chạy lần truy cập đầu tiên) ===== */
   #introOverlay { position: fixed; inset: 0; z-index: 9999; background: #eef0e6;
-    display: none; align-items: center; justify-content: center; opacity: 1; transition: opacity .7s ease; }
+    display: none; align-items: center; justify-content: center; opacity: 1;
+    transition: opacity .9s ease, transform 1s cubic-bezier(.22,.61,.36,1), filter .9s ease;
+    will-change: opacity, transform; }
   html.intro-first #introOverlay { display: flex; }
   html.intro-first body { overflow: hidden; }
   #introOverlay video { width: 100%; height: 100%; object-fit: cover; background: #eef0e6; }
   #introOverlay.hide { opacity: 0; pointer-events: none; }
+  /* "Mở ra dần": cuối video, overlay phóng nhẹ + mờ + nhoè dần để lộ trang web mở ra phía sau */
+  #introOverlay.reveal { opacity: 0; transform: scale(1.14); filter: blur(8px); pointer-events: none; }
   #introSkip { position: absolute; bottom: 24px; right: 24px; z-index: 2;
     background: rgba(255,255,255,.82); color: var(--green-700); border-radius: 999px;
     padding: 11px 22px; font-weight: 700; font-size: .95rem; box-shadow: var(--shadow);
@@ -119,8 +123,8 @@
 
 <!-- ===== Opening intro overlay (chạy lần đầu) ===== -->
 <div id="introOverlay" aria-hidden="true">
-  <video id="introVideo" muted autoplay playsinline preload="auto" poster="assets/img/intro-poster.png">
-    <source src="assets/video/intro.mp4" type="video/mp4">
+  <video id="introVideo" muted autoplay playsinline preload="auto">
+    <source src="assets/video/intro.mp4?v=2" type="video/mp4">
   </video>
   <button id="introSkip" type="button" aria-label="Bỏ qua phần mở đầu">Bỏ qua →</button>
 </div>
@@ -130,28 +134,40 @@
     if (!html.classList.contains('intro-first')) return;
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var done = false;
-    function dismiss() {
+    var ov = document.getElementById('introOverlay');
+    function finalize() {
+      html.classList.remove('intro-first');
+      if (ov) ov.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+    /* gradual=true → "mở ra dần" (overlay phóng + mờ ~1s) khi video sắp hết, để lộ trang web;
+       gradual=false → tan nhanh (.7s) khi bấm "Bỏ qua" hoặc lỗi. */
+    function reveal(gradual) {
       if (done) return; done = true;
       try { localStorage.setItem('dali_intro_seen', '1'); } catch (e) {}
-      var ov = document.getElementById('introOverlay');
-      html.classList.add('intro-go');                                 /* thả hero "hạ cánh"... */
-      try { window.dispatchEvent(new Event('dali:intro-done')); } catch (e) {}  /* ...và bật tiêu đề + confetti */
-      if (ov) ov.classList.add('hide');                               /* ...đồng thời overlay tan dần */
-      setTimeout(function () { html.classList.remove('intro-first'); if (ov) ov.style.display = 'none'; document.body.style.overflow = ''; }, 720);
+      html.classList.add('intro-go');                                 /* hero "hạ cánh" phía sau... */
+      try { window.dispatchEvent(new Event('dali:intro-done')); } catch (e) {}  /* ...bật tiêu đề + confetti */
+      if (ov) ov.classList.add(gradual ? 'reveal' : 'hide');          /* ...overlay mở ra / tan dần */
+      setTimeout(finalize, gradual ? 1000 : 720);
     }
-    if (reduce) { dismiss(); return; }
+    if (reduce) { reveal(false); return; }
     var v = document.getElementById('introVideo');
     var skip = document.getElementById('introSkip');
-    var ov2 = document.getElementById('introOverlay');
-    if (skip) skip.addEventListener('click', function (e) { e.stopPropagation(); dismiss(); });
+    if (skip) skip.addEventListener('click', function (e) { e.stopPropagation(); reveal(false); });
     /* fallback: nếu autoplay bị chặn, bấm vào màn hình để phát */
-    if (ov2 && v) ov2.addEventListener('click', function () { var pr = v.play(); if (pr && pr.catch) pr.catch(function () {}); });
+    if (ov && v) ov.addEventListener('click', function () { var pr = v.play(); if (pr && pr.catch) pr.catch(function () {}); });
     if (v) {
-      v.addEventListener('ended', dismiss);
-      v.addEventListener('error', dismiss);
+      var LEAD = 1.0;   /* bắt đầu "mở ra" 1s trước khi video kết thúc */
+      v.addEventListener('timeupdate', function () {
+        if (done) return;
+        var d = v.duration;
+        if (d && isFinite(d) && d - v.currentTime <= LEAD) reveal(true);
+      });
+      v.addEventListener('ended', function () { reveal(true); });     /* phòng khi timeupdate hụt nhịp */
+      v.addEventListener('error', function () { reveal(false); });
       var p = v.play(); if (p && p.catch) p.catch(function () {});
-      setTimeout(dismiss, 12000);   /* an toàn: tự đóng sau 12s nếu video không kết thúc */
-    } else { dismiss(); }
+      setTimeout(function () { reveal(true); }, 12000);               /* an toàn: tự mở sau 12s */
+    } else { reveal(false); }
   })();
 </script>
 
