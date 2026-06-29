@@ -9,13 +9,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/styles.css?v=13">
+<link rel="stylesheet" href="assets/css/styles.css?v=14">
 <style>
   .balloon-layer{display:none!important}
   html{scroll-behavior:auto}
   /* ---- banner builder ---- */
   .bb{display:grid;grid-template-columns:minmax(0,440px) 1fr;gap:28px;align-items:start}
-  @media (max-width:820px){.bb{grid-template-columns:1fr}}
+  @media (max-width:820px){.bb{grid-template-columns:minmax(0,1fr)}.bb-preview,.bb-controls{min-width:0}}
   .bb-preview{position:sticky;top:90px}
   @media (max-width:820px){.bb-preview{position:static}}
   #bannerCanvas{width:100%;max-width:440px;height:auto;display:block;margin:0 auto;border-radius:18px;
@@ -66,6 +66,16 @@
   .bb-result.err{background:#fdecec;color:#b3261e;border:1px solid #f3c2c2}
   .bb-privacy{font-size:.78rem;color:#7a8770;text-align:center;margin:2px 0 0}
   .btn--soft{background:#eef4e2;color:var(--green-700,#416900)}
+  /* ---- mobile (≤720px): stack + bigger tap targets, no horizontal overflow ---- */
+  @media (max-width:720px){
+    .bb{gap:20px}
+    #bannerCanvas{max-width:100%}
+    .bb-slot{padding:9px 11px;gap:10px}
+    .bb-slot .bb-slot-pick{min-height:44px;padding:10px 14px;font-size:.86rem}
+    .bb-slot .bb-slot-del{min-height:44px;min-width:40px;font-size:1rem}
+    .bb-slot .bb-thumb{width:48px;height:48px}
+    .bb-zoom input{min-height:34px}
+  }
   /* ---- Đặt cọc (deposit) modal + start-gate ---- */
   .dep-ov{position:fixed;inset:0;background:rgba(20,30,16,.5);backdrop-filter:blur(3px);z-index:200;
     display:none;padding:18px;overflow-y:auto}

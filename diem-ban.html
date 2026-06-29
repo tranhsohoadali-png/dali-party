@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/styles.css?v=13">
+<link rel="stylesheet" href="assets/css/styles.css?v=14">
 <style>[data-reveal],[data-stagger]>*{opacity:1;transform:none}html{scroll-behavior:auto}.balloon-layer{display:none}</style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
@@ -81,6 +81,17 @@
   .vn-island__lbl b { color: #1a1c18; font-weight: 800; }
   @media (max-width: 1024px) { .locator .map-panel { min-height: 400px; } }
   @media (max-width: 760px)  { .locator .map-panel { min-height: 340px; } }
+
+  /* mobile: bump informational store-list text to ≥12.5px + give the
+     search input a comfortable tap height (was rendering ~22px tall) */
+  @media (max-width: 760px) {
+    .store-search { padding: 9px 16px; }
+    .store-search input { min-height: 40px; font-size: .95rem; }
+    .store-tag, .store-dist { font-size: .78rem; }
+    .geo-note { font-size: .8rem; }
+    .geo-msg { font-size: .85rem; }
+    .store-empty { font-size: .92rem; }
+  }
   .map-panel .leaflet-popup-content { max-width: 230px; }
   .map-panel .leaflet-popup-content { font-family: inherit; font-size: .85rem; }
   .map-panel .leaflet-popup-content b { color: var(--green-700); }

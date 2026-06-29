@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/styles.css?v=13">
+<link rel="stylesheet" href="assets/css/styles.css?v=14">
 <style>
   /* ===== Opening intro (chỉ chạy lần truy cập đầu tiên) ===== */
   #introOverlay { position: fixed; inset: 0; z-index: 9999; background: #eef0e6;
@@ -108,6 +108,16 @@
     .shot { scroll-snap-align: center; }
     .shot[data-dup] { display: none; }                              /* bỏ bản nhân đôi khi cuộn tay */
     .showcase__controls { display: none; }                          /* không có animation thì không cần nút dừng */
+  }
+  /* ===== Tinh chỉnh mobile (≤480px) — không ảnh hưởng desktop ===== */
+  @media (max-width: 480px) {
+    /* nút Tạm dừng/Tiếp tục: chạm ≥44px theo WCAG 2.5.5 */
+    .showcase__toggle { min-height: 44px; padding: 11px 18px; font-size: .85rem; }
+    /* dòng tagline thương hiệu "Bóng bay & Trang trí": ≥11px cho dễ đọc */
+    .brand-name span { font-size: 11px; }
+    /* badge/chip trang chủ: nhích nhẹ lên ~12px cho rõ ràng */
+    .hero__badge { font-size: 12px; }
+    .product-card__badge { font-size: 12px; }
   }
 </style>
 <script>

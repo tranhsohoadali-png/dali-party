@@ -684,6 +684,19 @@ h1, h2, h3, h4 { line-height: 1.15; font-weight: 800; letter-spacing: -.01em; }
   .pd { gap: 28px; }
   .map-panel { min-height: 300px; }
   .store-list { max-height: none; overflow-y: visible; padding-right: 0; }
+
+  /* header row must not overflow the viewport (was ~4px over at 375px):
+     the brand has flex-shrink:0 and its wide-tracked tagline pushed
+     .nav-actions past the container edge. Let the brand shrink + clamp. */
+  .nav { gap: 12px; min-width: 0; }
+  .brand { flex-shrink: 1; min-width: 0; }
+  .brand-name { min-width: 0; overflow: hidden; }
+  .brand-name b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brand-name span {
+    letter-spacing: .12em; max-width: 100%;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .nav-actions { flex-shrink: 0; }
 }
 @media (max-width: 480px) {
   .grid-products, .grid-cats, .grid-feats, .stats, .steps { grid-template-columns: 1fr; }
@@ -723,6 +736,33 @@ h1, h2, h3, h4 { line-height: 1.15; font-weight: 800; letter-spacing: -.01em; }
   }
   .filters::-webkit-scrollbar { display: none; }
   .chip { flex: 0 0 auto; white-space: nowrap; }
+}
+
+/* ---- mobile tap targets ≥44px (WCAG 2.5.5) + readable meta text ---- */
+@media (max-width: 760px) {
+  /* primary/secondary action buttons */
+  .btn { min-height: 44px; }
+  /* pills / chips already ≥44px globally; keep filters comfy */
+  .chip { min-height: 44px; }
+  /* form controls render too short on phones — guarantee a tappable height */
+  input, select, textarea,
+  .field input, .field select, .field textarea {
+    min-height: 44px;
+  }
+  .field textarea { min-height: 120px; }
+  /* color swatches: visibly larger + the coarse-pointer ::before still
+     extends the hit area, so total touch area is comfortably ≥44px */
+  .swatch { width: 30px; height: 30px; position: relative; }
+  .swatch::before { content: ""; position: absolute; inset: -8px; }
+
+  /* product-card meta + store-card text were rendering <12.5px on phones */
+  .product-card__cat { font-size: .8rem; }
+  .product-card__rate { font-size: .82rem; }
+  .product-card__title { font-size: 1rem; }
+  .store-card p { font-size: .85rem; }
+  .store-card .hours { font-size: .82rem; }
+  .price small { font-size: .8rem; }
+  .product-card__badge { font-size: .75rem; }
 }
 
 /* enlarge small hit areas on touch devices (WCAG 2.5.5) */

@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/css/styles.css?v=13">
+<link rel="stylesheet" href="assets/css/styles.css?v=14">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -361,8 +361,20 @@
   .mk-empty { text-align: center; color: var(--muted); font-weight: 600; padding: 44px 14px; }
   .mk-empty.err { color: #b25e00; }
   @media (max-width: 760px) {
-    .mk-form-grid { grid-template-columns: 1fr; }
+    .mk-form-grid { grid-template-columns: minmax(0, 1fr); }
+    .mk-left, .mk-right { min-width: 0; }
     .mk-stage, .mk-right { max-width: 100%; }
+    .mk-left input, .mk-left .btn, #mkFile { max-width: 100%; box-sizing: border-box; }
+    #mkAiAll { white-space: normal; height: auto; }
+    /* Zoom toolbar: never exceed the viewport — let the slider take a full row
+       under the buttons so all five controls stay usable at ~375px. */
+    .mk-zoombar { width: 100%; max-width: 100%; }
+    .mk-zoombar input[type="range"] { flex: 1 1 100%; min-width: 0; order: 5; }
+    .mk-zoombar .mk-zbtn { width: 40px; height: 40px; }
+    .mk-zoombar .mk-zfit { padding: 9px 12px; min-height: 40px; }
+    /* keep nudge/edit controls on the holes list reachable at ≥40px */
+    .mk-hole-row .mk-iconbtn { padding: 8px 9px; }
+    .mk-hole-row input.mk-lbl { padding: 8px 7px; }
   }
 
   /* ============================================================
